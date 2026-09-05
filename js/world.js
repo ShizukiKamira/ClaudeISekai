@@ -1,0 +1,126 @@
+// ---------------------------------------------------------------------------
+// Overworld rendering: tiles, decorations, NPCs, item sparkles, player sprite
+// ---------------------------------------------------------------------------
+
+const TILE_COLORS = {
+  [TILE.GRASS]: "#3c7a3f",
+  [TILE.TREE]: "#1f3d20",
+  [TILE.TALLGRASS]: "#2f6b34",
+  [TILE.WATER]: "#2b5f8a",
+  [TILE.PATH]: "#a68a5c",
+  [TILE.SHRINE]: "#5b4a86",
+  [TILE.ROCK]: "#6b6b63",
+  [TILE.FLOWER]: "#4a8a4d",
+};
+
+function renderMap(ctx, state) {
+  const map = state.map;
+  for (let y = 0; y < map.length; y++) {
+    for (let x = 0; x < map[0].length; x++) {
+      const tile = map[y][x];
+      const px = x * TILE_SIZE;
+      const py = y * TILE_SIZE;
+      ctx.fillStyle = TILE_COLORS[tile] || "#000";
+      ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+      if (tile === TILE.TREE) {
+        ctx.fillStyle = "#2f5c30";
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, TILE_SIZE / 2 - 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (tile === TILE.TALLGRASS) {
+        ctx.strokeStyle = "#1f4a24";
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 4; i++) {
+          const gx = px + 6 + i * 8;
+          ctx.beginPath();
+          ctx.moveTo(gx, py + TILE_SIZE - 4);
+          ctx.lineTo(gx + 2, py + TILE_SIZE - 20);
+          ctx.stroke();
+        }
+      } else if (tile === TILE.WATER) {
+        ctx.strokeStyle = "rgba(255,255,255,0.25)";
+        ctx.beginPath();
+        ctx.moveTo(px + 4, py + TILE_SIZE / 2);
+        ctx.lineTo(px + TILE_SIZE - 4, py + TILE_SIZE / 2);
+        ctx.stroke();
+      } else if (tile === TILE.ROCK) {
+        ctx.fillStyle = "#8a8a80";
+        ctx.beginPath();
+        ctx.ellipse(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 14, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (tile === TILE.FLOWER) {
+        ctx.fillStyle = "#e8c9e0";
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (tile === TILE.SHRINE) {
+        ctx.fillStyle = "#e8c97a";
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Item sparkles
+  const t = performance.now() / 300;
+  for (const pickup of state.itemPickups) {
+    if (pickup.collected) continue;
+    const px = pickup.x * TILE_SIZE + TILE_SIZE / 2;
+    const py = pickup.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(t) * 4;
+    ctx.fillStyle = "#fff6c9";
+    ctx.beginPath();
+    ctx.arc(px, py, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#e8c97a";
+    ctx.stroke();
+  }
+
+  // NPCs
+  for (const npc of state.npcs) {
+    drawCharacter(ctx, npc.x * TILE_SIZE, npc.y * TILE_SIZE, npc.color, "down");
+  }
+
+  // Player
+  drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+}
+
+function drawCharacter(ctx, px, py, color, dir, isPlayer = false) {
+  const cx = px + TILE_SIZE / 2;
+  const cy = py + TILE_SIZE / 2;
+
+  // shadow
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(cx, py + TILE_SIZE - 6, 12, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // body
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.fill();
+
+  // outline
+  ctx.strokeStyle = isPlayer ? "#3a2e17" : "#111";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // facing indicator
+  ctx.fillStyle = "#111";
+  const offsets = {
+    up: [0, -6],
+    down: [0, 6],
+    left: [-6, 0],
+    right: [6, 0],
+  };
+  const [ox, oy] = offsets[dir] || offsets.down;
+  ctx.beginPath();
+  ctx.arc(cx + ox, cy + oy, 3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function findNpcAt(state, x, y) {
+  return state.npcs.find((n) => n.x === x && n.y === y);
+}
