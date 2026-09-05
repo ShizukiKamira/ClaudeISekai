@@ -1,0 +1,426 @@
+// ---------------------------------------------------------------------------
+// Detailed inventory tab: category filters, item-icon grid, player panel
+// ---------------------------------------------------------------------------
+
+const INVENTORY_GRID_COLS = 5;
+
+function currentCategory(state) {
+  return ITEM_CATEGORIES[state.menuFilterIndex].id;
+}
+
+function getFilteredInventory(state, categoryId) {
+  return state.player.inventory.filter((entry) => ITEMS[entry.item].category === categoryId);
+}
+
+function updateInventoryTab(state) {
+  if (Input.wasPressed("BracketLeft")) {
+    state.menuFilterIndex = (state.menuFilterIndex - 1 + ITEM_CATEGORIES.length) % ITEM_CATEGORIES.length;
+    state.menuCursor = 0;
+  }
+  if (Input.wasPressed("BracketRight")) {
+    state.menuFilterIndex = (state.menuFilterIndex + 1) % ITEM_CATEGORIES.length;
+    state.menuCursor = 0;
+  }
+
+  const items = getFilteredInventory(state, currentCategory(state));
+  if (items.length === 0) return;
+  state.menuCursor = Math.min(state.menuCursor, items.length - 1);
+
+  if (Input.wasPressed("ArrowRight")) {
+    state.menuCursor = Math.min(state.menuCursor + 1, items.length - 1);
+  }
+  if (Input.wasPressed("ArrowLeft")) {
+    state.menuCursor = Math.max(state.menuCursor - 1, 0);
+  }
+  if (Input.wasPressed("ArrowDown")) {
+    state.menuCursor = Math.min(state.menuCursor + INVENTORY_GRID_COLS, items.length - 1);
+  }
+  if (Input.wasPressed("ArrowUp")) {
+    state.menuCursor = Math.max(state.menuCursor - INVENTORY_GRID_COLS, 0);
+  }
+
+  if (Input.confirmPressed()) {
+    useOrEquipItem(state, items[state.menuCursor].item);
+  }
+}
+
+function useOrEquipItem(state, itemId) {
+  const p = state.player;
+  const data = ITEMS[itemId];
+  if (data.type === "consumable") {
+    const message = applyItemEffect(state, itemId);
+    if (message) {
+      state.menuFlashMessage = message;
+      state.menuFlashUntil = performance.now() + 1400;
+    }
+  } else if (data.type === "weapon") {
+    p.weapon = p.weapon === itemId ? null : itemId;
+  } else if (data.type === "accessory") {
+    p.accessory = p.accessory === itemId ? null : itemId;
+  }
+}
+
+// --- icon drawing -----------------------------------------------------------
+
+function drawFlaskIcon(ctx, cx, cy, s, liquidColor) {
+  const bodyR = s * 0.34;
+  const neckW = s * 0.22;
+  const neckH = s * 0.22;
+
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(cx - neckW / 2 - 2, cy - bodyR - neckH - 6, neckW + 4, 6);
+  ctx.fillStyle = "#d8d8d0";
+  ctx.fillRect(cx - neckW / 2, cy - bodyR - neckH, neckW, neckH);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, bodyR - 1, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.fillStyle = "rgba(20,20,20,0.15)";
+  ctx.fillRect(cx - bodyR, cy - bodyR, bodyR * 2, bodyR * 2);
+  ctx.fillStyle = liquidColor;
+  ctx.fillRect(cx - bodyR, cy - bodyR * 0.15, bodyR * 2, bodyR * 2);
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, bodyR, 0, Math.PI * 2);
+  ctx.strokeStyle = "#cfd8cf";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.beginPath();
+  ctx.arc(cx - bodyR * 0.35, cy - bodyR * 0.35, bodyR * 0.16, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSwordIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 4);
+
+  ctx.fillStyle = "#d8d8d0";
+  ctx.fillRect(-s * 0.06, -s * 0.42, s * 0.12, s * 0.6);
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.06, -s * 0.42);
+  ctx.lineTo(0, -s * 0.54);
+  ctx.lineTo(s * 0.06, -s * 0.42);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#c7a75f";
+  ctx.fillRect(-s * 0.2, s * 0.16, s * 0.4, s * 0.08);
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(-s * 0.05, s * 0.2, s * 0.1, s * 0.2);
+  ctx.beginPath();
+  ctx.arc(0, s * 0.42, s * 0.06, 0, Math.PI * 2);
+  ctx.fillStyle = "#c7a75f";
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawCharmIcon(ctx, cx, cy, s) {
+  ctx.strokeStyle = "#c7a75f";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy - s * 0.4, s * 0.1, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.2);
+  ctx.lineTo(cx + s * 0.26, cy + s * 0.06);
+  ctx.lineTo(cx, cy + s * 0.4);
+  ctx.lineTo(cx - s * 0.26, cy + s * 0.06);
+  ctx.closePath();
+  ctx.fillStyle = "#8e6fce";
+  ctx.fill();
+  ctx.strokeStyle = "#c9b8f0";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.2);
+  ctx.lineTo(cx, cy + s * 0.4);
+  ctx.strokeStyle = "rgba(255,255,255,0.4)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawDropletIcon(ctx, cx, cy, s, color) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.4);
+  ctx.quadraticCurveTo(cx + s * 0.32, cy + s * 0.06, cx, cy + s * 0.4);
+  ctx.quadraticCurveTo(cx - s * 0.32, cy + s * 0.06, cx, cy - s * 0.4);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.08, cy - s * 0.04, s * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFangIcon(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.16, cy - s * 0.36);
+  ctx.quadraticCurveTo(cx + s * 0.08, cy, cx + s * 0.02, cy + s * 0.4);
+  ctx.quadraticCurveTo(cx - s * 0.12, cy + s * 0.05, cx - s * 0.16, cy - s * 0.36);
+  ctx.closePath();
+  ctx.fillStyle = "#e8e2d0";
+  ctx.fill();
+  ctx.strokeStyle = "#9a9488";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawLocketIcon(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.arc(cx, cy - s * 0.42, s * 0.09, 0, Math.PI * 2);
+  ctx.strokeStyle = "#c7a75f";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, s * 0.3, s * 0.36, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#8a7a4a";
+  ctx.fill();
+  ctx.strokeStyle = "#c7a75f";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.3, cy);
+  ctx.lineTo(cx + s * 0.3, cy);
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.08, 0, Math.PI * 2);
+  ctx.fillStyle = "#c94f4f";
+  ctx.fill();
+}
+
+function drawGenericIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#555";
+  ctx.fillRect(cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.6);
+  ctx.strokeStyle = "#999";
+  ctx.strokeRect(cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.6);
+}
+
+function drawItemIcon(ctx, itemId, cx, cy, s) {
+  ctx.save();
+  switch (itemId) {
+    case "potion":
+      drawFlaskIcon(ctx, cx, cy, s, "#c9534f");
+      break;
+    case "hi_potion":
+      drawFlaskIcon(ctx, cx, cy, s, "#e8935a");
+      break;
+    case "ether":
+      drawFlaskIcon(ctx, cx, cy, s, "#4f8dae");
+      break;
+    case "iron_sword":
+      drawSwordIcon(ctx, cx, cy, s);
+      break;
+    case "traveler_charm":
+      drawCharmIcon(ctx, cx, cy, s);
+      break;
+    case "slime_gel":
+      drawDropletIcon(ctx, cx, cy, s, "#59c46b");
+      break;
+    case "wolf_fang":
+      drawFangIcon(ctx, cx, cy, s);
+      break;
+    case "old_locket":
+      drawLocketIcon(ctx, cx, cy, s);
+      break;
+    default:
+      drawGenericIcon(ctx, cx, cy, s);
+      break;
+  }
+  ctx.restore();
+}
+
+function drawPortrait(ctx, cx, cy, radius, color) {
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.3)";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + radius + 8, radius * 0.8, radius * 0.22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#3a2e17";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.fillStyle = "#111";
+  ctx.beginPath();
+  ctx.arc(cx, cy + radius * 0.4, radius * 0.13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// --- slot + panel drawing ---------------------------------------------------
+
+function drawItemSlot(ctx, x, y, size, entry, selected) {
+  ctx.fillStyle = selected ? "rgba(232,201,122,0.18)" : "rgba(20,28,20,0.75)";
+  ctx.fillRect(x, y, size, size);
+  ctx.strokeStyle = selected ? "#e8c97a" : "rgba(199,167,95,0.35)";
+  ctx.lineWidth = selected ? 2.5 : 1.5;
+  ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+
+  if (!entry) return;
+  drawItemIcon(ctx, entry.item, x + size / 2, y + size / 2 - 2, size * 0.6);
+
+  if (entry.qty > 1) {
+    const badgeR = 10;
+    const bx = x + size - badgeR - 1;
+    const by = y + size - badgeR - 1;
+    ctx.fillStyle = "rgba(10,14,12,0.9)";
+    ctx.beginPath();
+    ctx.arc(bx, by, badgeR, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#e8c97a";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = "#f2f2ec";
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(entry.qty), bx, by + 4);
+    ctx.textAlign = "left";
+  }
+}
+
+function renderPlayerPanel(ctx, state, x, y, w, h) {
+  const p = state.player;
+
+  const portraitH = 118;
+  ctx.fillStyle = "rgba(20,28,20,0.5)";
+  ctx.fillRect(x, y, w, portraitH);
+  ctx.strokeStyle = "rgba(232,201,122,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, portraitH);
+  drawPortrait(ctx, x + w / 2, y + portraitH / 2 - 4, 32, "#f2d9a0");
+
+  const eqY = y + portraitH + 14;
+  const eqSize = 52;
+  const eqGap = (w - eqSize * 2) / 3;
+  const weaponEntry = p.weapon ? { item: p.weapon, qty: 1 } : null;
+  const accessoryEntry = p.accessory ? { item: p.accessory, qty: 1 } : null;
+  drawItemSlot(ctx, x + eqGap, eqY, eqSize, weaponEntry, false);
+  drawItemSlot(ctx, x + eqGap * 2 + eqSize, eqY, eqSize, accessoryEntry, false);
+
+  ctx.fillStyle = "#8a9a8a";
+  ctx.font = "10px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Weapon", x + eqGap + eqSize / 2, eqY + eqSize + 13);
+  ctx.fillText("Accessory", x + eqGap * 2 + eqSize + eqSize / 2, eqY + eqSize + 13);
+  ctx.textAlign = "left";
+
+  let sy = eqY + eqSize + 34;
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 14px 'Segoe UI', sans-serif";
+  ctx.fillText(`Lv.${p.level} Traveler`, x, sy);
+  sy += 16;
+
+  ctx.fillStyle = "#cfd8cf";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.fillText(`EXP ${p.exp}/${p.expToNext}`, x, sy);
+  drawBar(ctx, x, sy + 5, w, 7, p.exp / p.expToNext, "#8e6fce");
+  sy += 22;
+
+  ctx.fillStyle = "#f2f2ec";
+  ctx.font = "12px 'Segoe UI', sans-serif";
+  ctx.fillText(`HP ${p.hp}/${p.maxHp}`, x, sy);
+  drawBar(ctx, x, sy + 5, w, 9, p.hp / p.maxHp, "#4fae5a");
+  sy += 24;
+
+  ctx.fillText(`MP ${p.mp}/${p.maxMp}`, x, sy);
+  drawBar(ctx, x, sy + 5, w, 9, p.mp / p.maxMp, "#4f8dae");
+  sy += 26;
+
+  ctx.font = "12px 'Segoe UI', sans-serif";
+  ctx.fillText(`ATK ${playerAtk(p)}`, x, sy);
+  ctx.fillText(`DEF ${playerDef(p)}`, x + w / 2, sy);
+  sy += 20;
+  ctx.fillText(`Gold ${p.gold}`, x, sy);
+}
+
+function renderInventoryTab(ctx, state, x, y, w, h) {
+  const p = state.player;
+
+  const leftW = Math.round(w * 0.56);
+  const rightX = x + leftW + 18;
+  const rightW = w - leftW - 18;
+
+  // category filter tabs (above the item grid, left column only)
+  const catH = 26;
+  const catGap = 6;
+  const catW = (leftW - catGap * (ITEM_CATEGORIES.length - 1)) / ITEM_CATEGORIES.length;
+  ITEM_CATEGORIES.forEach((cat, i) => {
+    const cx = x + i * (catW + catGap);
+    const active = i === state.menuFilterIndex;
+    ctx.fillStyle = active ? "#e8c97a" : "rgba(232,201,122,0.12)";
+    ctx.fillRect(cx, y, catW, catH);
+    ctx.strokeStyle = "rgba(232,201,122,0.5)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx, y, catW, catH);
+    ctx.fillStyle = active ? "#1a1206" : "#cfd8cf";
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(cat.label, cx + catW / 2, y + catH / 2 + 4);
+  });
+  ctx.textAlign = "left";
+
+  const gridY = y + catH + 14;
+  const gridH = h - catH - 14 - 28;
+
+  const items = getFilteredInventory(state, currentCategory(state));
+  const slotSize = 54;
+  const slotGap = 8;
+  const rows = Math.max(3, Math.min(5, Math.floor((gridH + slotGap) / (slotSize + slotGap))));
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < INVENTORY_GRID_COLS; c++) {
+      const idx = r * INVENTORY_GRID_COLS + c;
+      const sx = x + c * (slotSize + slotGap);
+      const sy = gridY + r * (slotSize + slotGap);
+      const entry = items[idx] || null;
+      drawItemSlot(ctx, sx, sy, slotSize, entry, idx === state.menuCursor && !!entry);
+    }
+  }
+
+  if (items.length === 0) {
+    const gridW = INVENTORY_GRID_COLS * (slotSize + slotGap) - slotGap;
+    ctx.fillStyle = "#9aa89a";
+    ctx.font = "13px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("(nothing in this category yet)", x + gridW / 2, gridY + (rows * (slotSize + slotGap)) / 2);
+    ctx.textAlign = "left";
+  }
+
+  const descY = y + h - 6;
+  const selected = items[state.menuCursor];
+  ctx.font = "13px 'Segoe UI', sans-serif";
+  if (selected) {
+    const data = ITEMS[selected.item];
+    const tag = selected.item === p.weapon || selected.item === p.accessory ? " (equipped)" : "";
+    ctx.fillStyle = "#e8c97a";
+    ctx.fillText(`${data.name}${tag}`, x, descY - 15);
+    ctx.fillStyle = "#cfd8cf";
+    ctx.fillText(data.desc, x, descY);
+  } else {
+    ctx.fillStyle = "#9aa89a";
+    ctx.fillText("Select an item to see its details.", x, descY);
+  }
+
+  renderPlayerPanel(ctx, state, rightX, y, rightW, h);
+}

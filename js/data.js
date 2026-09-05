@@ -107,20 +107,55 @@ const ITEM_PICKUPS = [
   { id: "pickup_gold1", x: 10, y: 9, item: "gold", qty: 25, collected: false },
   { id: "pickup_sword", x: 15, y: 4, item: "iron_sword", qty: 1, collected: false },
   { id: "pickup_potion2", x: 4, y: 11, item: "hi_potion", qty: 1, collected: false },
+  { id: "pickup_locket", x: 16, y: 2, item: "old_locket", qty: 1, collected: false },
 ];
 
 const ITEMS = {
-  potion: { name: "Potion", desc: "Restores 30 HP.", type: "consumable", heal: 30 },
-  hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", heal: 80 },
-  ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", restoreMp: 20 },
-  gold: { name: "Gold", desc: "Currency of no world in particular.", type: "currency" },
+  potion: { name: "Potion", desc: "Restores 30 HP.", type: "consumable", category: "items", heal: 30 },
+  hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", category: "items", heal: 80 },
+  ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", category: "items", restoreMp: 20 },
+  gold: { name: "Gold", desc: "Currency of no world in particular.", type: "currency", category: "misc" },
   iron_sword: {
     name: "Iron Sword",
     desc: "A well-balanced blade. +6 ATK.",
     type: "weapon",
+    category: "weapons",
     atkBonus: 6,
   },
+  traveler_charm: {
+    name: "Traveler's Charm",
+    desc: "A charm worn smooth by travelers before you. +3 DEF.",
+    type: "accessory",
+    category: "accessories",
+    defBonus: 3,
+  },
+  slime_gel: {
+    name: "Slime Gel",
+    desc: "Cool, faintly glowing residue. Useful to alchemists, apparently.",
+    type: "material",
+    category: "ingredients",
+  },
+  wolf_fang: {
+    name: "Wolf Fang",
+    desc: "A sharp fang from a Shade Wolf. Still faintly warm.",
+    type: "material",
+    category: "ingredients",
+  },
+  old_locket: {
+    name: "Old Locket",
+    desc: "A tarnished locket, warm to the touch. It isn't yours, and yet it feels familiar.",
+    type: "misc",
+    category: "misc",
+  },
 };
+
+const ITEM_CATEGORIES = [
+  { id: "weapons", label: "Weapons" },
+  { id: "items", label: "Items" },
+  { id: "accessories", label: "Accessories" },
+  { id: "ingredients", label: "Ingredients" },
+  { id: "misc", label: "Misc" },
+];
 
 function addItem(state, itemId, qty) {
   if (itemId === "gold") {
@@ -143,6 +178,7 @@ const ENEMIES = {
     exp: 8,
     gold: 5,
     skill: null,
+    drop: { item: "slime_gel", chance: 0.5 },
   },
   goblin: {
     name: "Thornback Goblin",
@@ -163,6 +199,7 @@ const ENEMIES = {
     exp: 20,
     gold: 18,
     skill: { name: "Howl", chance: 0.3, atkMult: 1.6 },
+    drop: { item: "wolf_fang", chance: 0.45 },
   },
 };
 

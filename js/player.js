@@ -19,9 +19,10 @@ function createPlayer() {
     maxMp: 20,
     mp: 20,
     baseAtk: 8,
-    def: 3,
+    baseDef: 3,
     gold: 15,
     weapon: null,
+    accessory: null,
     inventory: [],
   };
 }
@@ -29,6 +30,11 @@ function createPlayer() {
 function playerAtk(player) {
   const bonus = player.weapon ? ITEMS[player.weapon].atkBonus || 0 : 0;
   return player.baseAtk + bonus;
+}
+
+function playerDef(player) {
+  const bonus = player.accessory ? ITEMS[player.accessory].defBonus || 0 : 0;
+  return player.baseDef + bonus;
 }
 
 function expNeededFor(level) {
@@ -46,7 +52,7 @@ function grantExp(state, amount) {
     p.maxHp += 14;
     p.maxMp += 4;
     p.baseAtk += 3;
-    p.def += 1;
+    p.baseDef += 1;
     p.hp = p.maxHp;
     p.mp = p.maxMp;
     messages.push(`Level up! You are now level ${p.level}.`);

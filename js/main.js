@@ -15,6 +15,9 @@ function createInitialState() {
     titleCursor: 0,
     menuCursor: 0,
     menuTab: "status", // status | inventory
+    menuFilterIndex: 0,
+    menuFlashMessage: "",
+    menuFlashUntil: 0,
   };
 }
 
@@ -135,7 +138,7 @@ function updateTitle() {
       state.mode = "INTRO";
       Dialogue.show([
         "Arrow keys / WASD to move. Enter / Space / Z to confirm or talk.",
-        "Press I to open your status and inventory menu.",
+        "Press I to open your status and inventory menu (Q to switch tabs, [ ] to filter items, S to save).",
         "Walking through tall grass may trigger a battle - choose Attack, Skill, Item, or Run.",
         "Find the Ancient Shrine to the north-east to face the Guardian and complete your story.",
       ], {
@@ -177,42 +180,18 @@ function updateMenu() {
     state.mode = "OVERWORLD";
     return;
   }
-  if (Input.wasPressed("ArrowLeft") || Input.wasPressed("KeyA")) {
+  if (Input.wasPressed("KeyQ")) {
     state.menuTab = state.menuTab === "status" ? "inventory" : "status";
     state.menuCursor = 0;
   }
-  if (Input.wasPressed("ArrowRight") || Input.wasPressed("KeyD")) {
-    state.menuTab = state.menuTab === "status" ? "inventory" : "status";
-    state.menuCursor = 0;
+  if (Input.wasPressed("KeyS")) {
+    saveGame(state);
+    state.menuFlashMessage = "Game saved.";
+    state.menuFlashUntil = performance.now() + 1200;
   }
 
   if (state.menuTab === "inventory") {
-    const p = state.player;
-    const rows = [...p.inventory.map((i) => ({ kind: "item", ...i }))];
-    if (p.weapon) rows.push({ kind: "unequip" });
-    rows.push({ kind: "save" });
-
-    if (Input.wasPressed("ArrowUp") || Input.wasPressed("KeyW")) {
-      state.menuCursor = (state.menuCursor - 1 + rows.length) % rows.length;
-    }
-    if (Input.wasPressed("ArrowDown") || Input.wasPressed("KeyS")) {
-      state.menuCursor = (state.menuCursor + 1) % rows.length;
-    }
-    if (Input.confirmPressed()) {
-      const row = rows[state.menuCursor];
-      if (row.kind === "item") {
-        const data = ITEMS[row.item];
-        if (data.type === "consumable") {
-          playerUseItem(state, row.item);
-        } else if (data.type === "weapon") {
-          p.weapon = row.item;
-        }
-      } else if (row.kind === "unequip") {
-        p.weapon = null;
-      } else if (row.kind === "save") {
-        saveGame(state);
-      }
-    }
+    updateInventoryTab(state);
   }
 }
 
@@ -302,10 +281,11 @@ function renderHud() {
 }
 
 function renderMenu() {
+  const panelX = 60, panelY = 40, panelW = canvas.width - 120, panelH = canvas.height - 80;
   ctx.fillStyle = "rgba(6,10,8,0.9)";
-  ctx.fillRect(60, 40, canvas.width - 120, canvas.height - 80);
+  ctx.fillRect(panelX, panelY, panelW, panelH);
   ctx.strokeStyle = "#e8c97a";
-  ctx.strokeRect(60, 40, canvas.width - 120, canvas.height - 80);
+  ctx.strokeRect(panelX, panelY, panelW, panelH);
 
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
@@ -321,39 +301,28 @@ function renderMenu() {
       `HP: ${p.hp} / ${p.maxHp}`,
       `MP: ${p.mp} / ${p.maxMp}`,
       `Attack: ${playerAtk(p)} ${p.weapon ? `(base ${p.baseAtk} + ${ITEMS[p.weapon].atkBonus} ${ITEMS[p.weapon].name})` : ""}`,
-      `Defense: ${p.def}`,
+      `Defense: ${playerDef(p)} ${p.accessory ? `(base ${p.baseDef} + ${ITEMS[p.accessory].defBonus} ${ITEMS[p.accessory].name})` : ""}`,
       `Gold: ${p.gold}`,
     ];
     lines.forEach((line, i) => ctx.fillText(line, 100, 120 + i * 28));
   } else {
-    const rows = [...p.inventory.map((i) => ({ kind: "item", ...i }))];
-    if (p.weapon) rows.push({ kind: "unequip" });
-    rows.push({ kind: "save" });
+    renderInventoryTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
+  }
 
-    ctx.font = "16px 'Segoe UI', sans-serif";
-    if (rows.length === 1 && rows[0].kind === "save" && p.inventory.length === 0) {
-      ctx.fillStyle = "#9aa89a";
-      ctx.fillText("(no items yet)", 100, 120);
-    }
-    rows.forEach((row, i) => {
-      let label;
-      if (row.kind === "item") {
-        const data = ITEMS[row.item];
-        const equippedTag = row.item === p.weapon ? " (equipped)" : "";
-        label = `${data.name} x${row.qty}${equippedTag} - ${data.desc}`;
-      } else if (row.kind === "unequip") {
-        label = `Unequip ${ITEMS[p.weapon].name}`;
-      } else {
-        label = "Save Game";
-      }
-      ctx.fillStyle = i === state.menuCursor ? "#e8c97a" : "#f2f2ec";
-      ctx.fillText((i === state.menuCursor ? "> " : "  ") + label, 100, 120 + i * 26);
-    });
+  if (performance.now() < state.menuFlashUntil) {
+    ctx.fillStyle = "#7cd68a";
+    ctx.font = "13px 'Segoe UI', sans-serif";
+    ctx.textAlign = "right";
+    ctx.fillText(state.menuFlashMessage, panelX + panelW - 16, panelY + 24);
+    ctx.textAlign = "left";
   }
 
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText("Left/Right: switch tab   Up/Down: select   Enter: use/save   I or Esc: close", 90, canvas.height - 56);
+  const hint = state.menuTab === "inventory"
+    ? "Q: tab   [ ]: category   Arrows: browse   Enter: use/equip   S: save   I/Esc: close"
+    : "Q: switch tab   S: save   I or Esc: close";
+  ctx.fillText(hint, 90, canvas.height - 56);
 }
 
 function renderEndScreen(title, lines, bg, accent) {

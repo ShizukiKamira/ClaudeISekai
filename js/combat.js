@@ -67,20 +67,27 @@ function playerSkillFireball(state) {
   afterPlayerAction(state);
 }
 
-function playerUseItem(state, itemId) {
+function applyItemEffect(state, itemId) {
   const p = state.player;
   const entry = p.inventory.find((i) => i.item === itemId);
-  if (!entry || entry.qty <= 0) return;
+  if (!entry || entry.qty <= 0) return null;
   const data = ITEMS[itemId];
+  let message = null;
   if (data.heal) {
     p.hp = Math.min(p.maxHp, p.hp + data.heal);
-    pushLog(`You use a ${data.name} and recover ${data.heal} HP.`);
+    message = `You use a ${data.name} and recover ${data.heal} HP.`;
   } else if (data.restoreMp) {
     p.mp = Math.min(p.maxMp, p.mp + data.restoreMp);
-    pushLog(`You use a ${data.name} and recover ${data.restoreMp} MP.`);
+    message = `You use a ${data.name} and recover ${data.restoreMp} MP.`;
   }
   entry.qty -= 1;
   if (entry.qty <= 0) p.inventory = p.inventory.filter((i) => i.qty > 0);
+  return message;
+}
+
+function playerUseItem(state, itemId) {
+  const message = applyItemEffect(state, itemId);
+  if (message) pushLog(message);
   afterPlayerAction(state);
 }
 
@@ -116,10 +123,10 @@ function enemyTurn(state) {
   const enemy = Battle.enemy;
   let dmg;
   if (enemy.skill && Math.random() < enemy.skill.chance) {
-    dmg = Math.max(3, Math.floor(enemy.atk * enemy.skill.atkMult) - state.player.def + rollVariance());
+    dmg = Math.max(3, Math.floor(enemy.atk * enemy.skill.atkMult) - playerDef(state.player) + rollVariance());
     pushLog(`${enemy.name} uses ${enemy.skill.name}! You take ${dmg} damage.`);
   } else {
-    dmg = Math.max(2, enemy.atk - state.player.def + rollVariance());
+    dmg = Math.max(2, enemy.atk - playerDef(state.player) + rollVariance());
     pushLog(`${enemy.name} attacks you for ${dmg} damage.`);
   }
   state.player.hp = Math.max(0, state.player.hp - dmg);
@@ -136,8 +143,16 @@ function onEnemyDefeated(state) {
   const levelMsgs = grantExp(state, enemy.exp);
   state.player.gold += enemy.gold;
   pushLog(`Gained ${enemy.exp} EXP and ${enemy.gold} gold.`);
+  if (enemy.drop && Math.random() < enemy.drop.chance) {
+    addItem(state, enemy.drop.item, 1);
+    pushLog(`You also found ${ITEMS[enemy.drop.item].name}.`);
+  }
   for (const m of levelMsgs) pushLog(m);
-  if (Battle.isBoss) state.flags.bossDefeated = true;
+  if (Battle.isBoss) {
+    state.flags.bossDefeated = true;
+    addItem(state, "traveler_charm", 1);
+    pushLog("The Guardian's light coalesces into a Traveler's Charm.");
+  }
   Battle.awaitingContinue = true;
   Battle.onEnd = Battle.isBoss ? "victory" : "won";
 }
