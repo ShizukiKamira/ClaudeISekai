@@ -18,7 +18,7 @@ const Battle = {
 
 function startRandomEncounter(state) {
   const id = RANDOM_ENCOUNTER_TABLE[Math.floor(Math.random() * RANDOM_ENCOUNTER_TABLE.length)];
-  startBattle(state, ENEMIES[id]);
+  startBattle(state, instantiateEnemy(id));
 }
 
 function triggerShrineEvent(state) {
@@ -33,7 +33,8 @@ function startBattle(state, enemyTemplate) {
   Battle.enemyHp = enemyTemplate.hp;
   Battle.enemyMaxHp = enemyTemplate.hp;
   Battle.isBoss = !!enemyTemplate.isBoss;
-  Battle.log = [`A wild ${enemyTemplate.name} appears!`];
+  const levelTag = enemyTemplate.level ? ` (Lv.${enemyTemplate.level})` : "";
+  Battle.log = [`A wild ${enemyTemplate.name}${levelTag} appears!`];
   Battle.menu = "root";
   Battle.cursor = 0;
   Battle.playerTurn = true;
@@ -224,13 +225,17 @@ function renderBattle(ctx, state, canvasW, canvasH) {
   ctx.fillStyle = "#f2f2ec";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(Battle.enemy.name, cx, cy - radius - 20);
+  const nameTag = Battle.enemy.level ? `${Battle.enemy.name}  Lv.${Battle.enemy.level}` : Battle.enemy.name;
+  ctx.fillText(nameTag, cx, cy - radius - 20);
 
   // enemy hp bar
   const barW = 220;
   drawBar(ctx, cx - barW / 2, cy + radius + 20, barW, 14, Battle.enemyHp / Battle.enemyMaxHp, "#c94f4f");
   ctx.font = "13px 'Segoe UI', sans-serif";
   ctx.fillText(`HP ${Battle.enemyHp}/${Battle.enemyMaxHp}`, cx, cy + radius + 48);
+  ctx.fillStyle = "#cfd8cf";
+  ctx.font = "12px 'Segoe UI', sans-serif";
+  ctx.fillText(`ATK ${Battle.enemy.atk}   DEF ${Battle.enemy.def}`, cx, cy + radius + 66);
   ctx.textAlign = "left";
 
   // player status panel

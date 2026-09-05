@@ -244,7 +244,7 @@ function renderTitle() {
   ctx.textAlign = "center";
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 40px 'Segoe UI', sans-serif";
-  ctx.fillText("ISEKAI: The Whispering Wood", canvas.width / 2, 160);
+  ctx.fillText("The Whispering Wood", canvas.width / 2, 160);
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "16px 'Segoe UI', sans-serif";
@@ -265,15 +265,38 @@ function renderTitle() {
 
 function renderHud() {
   const p = state.player;
-  ctx.fillStyle = "rgba(10,14,12,0.75)";
-  ctx.fillRect(8, 8, 190, 60);
+  const boxX = 8, boxY = 8, boxW = 210, boxH = 100;
+  ctx.fillStyle = "rgba(10,14,12,0.78)";
+  ctx.fillRect(boxX, boxY, boxW, boxH);
   ctx.strokeStyle = "#e8c97a";
-  ctx.strokeRect(8, 8, 190, 60);
+  ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+  const innerX = boxX + 10;
+  const barW = boxW - 20;
+  let sy = boxY + 18;
+
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 13px 'Segoe UI', sans-serif";
+  ctx.fillText(`Lv.${p.level}`, innerX, sy);
   ctx.fillStyle = "#f2f2ec";
-  ctx.font = "13px 'Segoe UI', sans-serif";
-  ctx.fillText(`Lv.${p.level}   Gold: ${p.gold}`, 18, 26);
-  drawBar(ctx, 18, 34, 170, 10, p.hp / p.maxHp, "#4fae5a");
-  ctx.fillText(`HP ${p.hp}/${p.maxHp}`, 18, 58);
+  ctx.font = "12px 'Segoe UI', sans-serif";
+  ctx.textAlign = "right";
+  ctx.fillText(`Gold ${p.gold}`, boxX + boxW - 10, sy);
+  ctx.textAlign = "left";
+  sy += 18;
+
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.fillStyle = "#f2f2ec";
+  ctx.fillText(`HP ${p.hp}/${p.maxHp}`, innerX, sy);
+  drawBar(ctx, innerX, sy + 3, barW, 9, p.hp / p.maxHp, "#4fae5a");
+  sy += 24;
+
+  ctx.fillText(`MP ${p.mp}/${p.maxMp}`, innerX, sy);
+  drawBar(ctx, innerX, sy + 3, barW, 9, p.mp / p.maxMp, "#4f8dae");
+  sy += 24;
+
+  ctx.fillText(`EXP ${p.exp}/${p.expToNext}`, innerX, sy);
+  drawBar(ctx, innerX, sy + 3, barW, 7, p.exp / p.expToNext, "#8e6fce");
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";

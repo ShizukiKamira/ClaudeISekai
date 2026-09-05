@@ -1,4 +1,4 @@
-# ISEKAI: The Whispering Wood
+# The Whispering Wood
 
 A small browser-based isekai RPG. You play as someone pulled from their own
 world into a mysterious forest, with no idea how to get home.

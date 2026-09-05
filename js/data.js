@@ -205,6 +205,24 @@ const ENEMIES = {
 
 const RANDOM_ENCOUNTER_TABLE = ["slime", "slime", "goblin", "goblin", "wolf"];
 
+const ENEMY_MIN_LEVEL = 1;
+const ENEMY_MAX_LEVEL = 3;
+
+function instantiateEnemy(id) {
+  const template = ENEMIES[id];
+  const level = ENEMY_MIN_LEVEL + Math.floor(Math.random() * (ENEMY_MAX_LEVEL - ENEMY_MIN_LEVEL + 1));
+  const tier = level - 1; // 0-based scaling steps
+  return {
+    ...template,
+    level,
+    hp: Math.round(template.hp * (1 + tier * 0.4)),
+    atk: Math.round(template.atk * (1 + tier * 0.25)),
+    def: template.def + tier,
+    exp: Math.round(template.exp * (1 + tier * 0.5)),
+    gold: Math.round(template.gold * (1 + tier * 0.5)),
+  };
+}
+
 const BOSS = {
   name: "Guardian of the Between",
   color: "#8e6fce",
