@@ -83,6 +83,13 @@ function renderMap(ctx, state) {
   // NPCs
   for (const npc of state.npcs) {
     drawCharacter(ctx, npc.x * TILE_SIZE, npc.y * TILE_SIZE, npc.color, "down");
+    if (npc.shop) {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#e8c97a";
+      ctx.font = "bold 11px 'Segoe UI', sans-serif";
+      ctx.fillText(`${npc.name} (Merchant)`, npc.x * TILE_SIZE + TILE_SIZE / 2, npc.y * TILE_SIZE - 4);
+      ctx.textAlign = "left";
+    }
   }
 
   // Field monsters
@@ -106,6 +113,12 @@ function drawBed(ctx) {
   ctx.strokeStyle = "#3a2e17";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(bx + 4, by + 8, TILE_SIZE - 8, TILE_SIZE - 12);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  ctx.fillText("Bed", bx + TILE_SIZE / 2, by - 4);
+  ctx.textAlign = "left";
 }
 
 function drawFieldMonster(ctx, monster) {
