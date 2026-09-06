@@ -301,6 +301,102 @@ function drawCampfireIcon(ctx, cx, cy, s) {
   ctx.fill();
 }
 
+function drawLogIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 10);
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(-s * 0.38, -s * 0.16, s * 0.76, s * 0.32);
+  ctx.strokeStyle = "#5c4326";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-s * 0.38, -s * 0.16, s * 0.76, s * 0.32);
+  [-0.38, 0.38].forEach((ox) => {
+    ctx.beginPath();
+    ctx.ellipse(s * ox, 0, s * 0.05, s * 0.16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "#c9a97a";
+    ctx.fill();
+    ctx.strokeStyle = "#5c4326";
+    ctx.stroke();
+  });
+  ctx.restore();
+}
+
+function drawStoneIcon(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.3, cy + s * 0.1);
+  ctx.lineTo(cx - s * 0.16, cy - s * 0.28);
+  ctx.lineTo(cx + s * 0.14, cy - s * 0.3);
+  ctx.lineTo(cx + s * 0.32, cy + s * 0.02);
+  ctx.lineTo(cx + s * 0.1, cy + s * 0.32);
+  ctx.lineTo(cx - s * 0.18, cy + s * 0.3);
+  ctx.closePath();
+  ctx.fillStyle = "#8a8a80";
+  ctx.fill();
+  ctx.strokeStyle = "#5c5c54";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawOreIcon(ctx, cx, cy, s, speckColor) {
+  drawStoneIcon(ctx, cx, cy, s);
+  ctx.fillStyle = speckColor;
+  [[-0.08, -0.05], [0.1, 0.05], [-0.02, 0.15], [0.15, -0.1]].forEach(([ox, oy]) => {
+    ctx.beginPath();
+    ctx.arc(cx + ox * s, cy + oy * s, s * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawAxeIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 4);
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(-s * 0.06, -s * 0.42, s * 0.12, s * 0.78);
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.06, -s * 0.42);
+  ctx.lineTo(-s * 0.34, -s * 0.3);
+  ctx.lineTo(-s * 0.3, -s * 0.02);
+  ctx.lineTo(-s * 0.06, -s * 0.12);
+  ctx.closePath();
+  ctx.fillStyle = "#9aa4ab";
+  ctx.fill();
+  ctx.strokeStyle = "#4a5158";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawPickaxeIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 4);
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(-s * 0.06, -s * 0.42, s * 0.12, s * 0.78);
+  ctx.strokeStyle = "#4a5158";
+  ctx.lineWidth = s * 0.1;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.36, -s * 0.4);
+  ctx.quadraticCurveTo(0, -s * 0.62, s * 0.36, -s * 0.4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawBridgeIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#a68a5c";
+  ctx.fillRect(cx - s * 0.4, cy - s * 0.12, s * 0.8, s * 0.24);
+  ctx.strokeStyle = "#6b4a2f";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.4, cy - s * 0.12, s * 0.8, s * 0.24);
+  for (let i = 0; i < 3; i++) {
+    const lx = cx - s * 0.26 + i * s * 0.26;
+    ctx.beginPath();
+    ctx.moveTo(lx, cy - s * 0.12);
+    ctx.lineTo(lx, cy + s * 0.12);
+    ctx.stroke();
+  }
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -343,6 +439,27 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "campfire":
       drawCampfireIcon(ctx, cx, cy, s);
+      break;
+    case "log":
+      drawLogIcon(ctx, cx, cy, s);
+      break;
+    case "stone":
+      drawStoneIcon(ctx, cx, cy, s);
+      break;
+    case "iron_ore":
+      drawOreIcon(ctx, cx, cy, s, "#cfd8cf");
+      break;
+    case "copper_ore":
+      drawOreIcon(ctx, cx, cy, s, "#e0895a");
+      break;
+    case "axe":
+      drawAxeIcon(ctx, cx, cy, s);
+      break;
+    case "pickaxe":
+      drawPickaxeIcon(ctx, cx, cy, s);
+      break;
+    case "bridge":
+      drawBridgeIcon(ctx, cx, cy, s);
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);

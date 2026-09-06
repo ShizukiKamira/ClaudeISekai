@@ -42,7 +42,10 @@ const PATH_WAYPOINTS = [
 ];
 
 const PLAYER_START = { x: 2, y: 44 };
-const BED = { x: 3, y: 43 };
+
+function isBorderTile(x, y) {
+  return x === 0 || y === 0 || x === MAP_COLS - 1 || y === MAP_ROWS - 1;
+}
 
 function buildMap() {
   const rng = mulberry32(MAP_SEED);
@@ -84,8 +87,8 @@ function buildMap() {
     fillRect(x0, y0, x0 + w - 1, y0 + h - 1, TILE.WATER);
   }
 
-  // Rock clusters
-  for (let i = 0; i < 24; i++) {
+  // Boulders (minable with a pickaxe)
+  for (let i = 0; i < 32; i++) {
     grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.ROCK;
   }
 
@@ -123,7 +126,6 @@ function buildMap() {
   // the random decoration scatter landed something solid on top of them.
   const keepClear = [
     [PLAYER_START.x, PLAYER_START.y],
-    [BED.x, BED.y],
     [3, 44], // fox spirit NPC
     [15, 34], // merchant NPC
     [6, 40], [18, 30], [46, 6], [10, 36], [34, 18], [58, 3], // item pickups
@@ -272,10 +274,59 @@ const ITEMS = {
   },
   campfire: {
     name: "Campfire",
-    desc: "A portable campfire kit. Select it here to place it on the ground in front of you.",
+    desc: "A portable campfire kit. Select it here to place it on the ground in front of you. Rest at a lit campfire at night to skip to morning.",
     type: "placeable",
     category: "misc",
     value: 15,
+  },
+  log: {
+    name: "Log",
+    desc: "A sturdy length of timber, chopped from a tree.",
+    type: "material",
+    category: "ingredients",
+    value: 6,
+  },
+  stone: {
+    name: "Stone",
+    desc: "A chunk of solid rock, mined from a boulder.",
+    type: "material",
+    category: "ingredients",
+    value: 4,
+  },
+  iron_ore: {
+    name: "Iron Ore",
+    desc: "Raw ore veined with iron. Needs smelting to be of much use.",
+    type: "material",
+    category: "ingredients",
+    value: 12,
+  },
+  copper_ore: {
+    name: "Copper Ore",
+    desc: "Raw ore veined with copper. Needs smelting to be of much use.",
+    type: "material",
+    category: "ingredients",
+    value: 9,
+  },
+  axe: {
+    name: "Axe",
+    desc: "A sturdy axe. Carrying one lets you chop down trees for logs and sticks.",
+    type: "tool",
+    category: "misc",
+    value: 35,
+  },
+  pickaxe: {
+    name: "Pickaxe",
+    desc: "A sturdy pickaxe. Carrying one lets you mine boulders for stone and ore.",
+    type: "tool",
+    category: "misc",
+    value: 45,
+  },
+  bridge: {
+    name: "Bridge",
+    desc: "A set of planks and rope. Select it here, then face a water tile to lay a crossing.",
+    type: "placeable",
+    category: "misc",
+    value: 20,
   },
 };
 
@@ -290,10 +341,40 @@ const CRAFTING_RECIPES = [
       { item: "flint", qty: 1 },
     ],
   },
+  {
+    id: "axe",
+    name: "Axe",
+    result: "axe",
+    resultQty: 1,
+    ingredients: [
+      { item: "stick", qty: 2 },
+      { item: "flint", qty: 1 },
+    ],
+  },
+  {
+    id: "pickaxe",
+    name: "Pickaxe",
+    result: "pickaxe",
+    resultQty: 1,
+    ingredients: [
+      { item: "stick", qty: 2 },
+      { item: "flint", qty: 2 },
+    ],
+  },
+  {
+    id: "bridge",
+    name: "Bridge",
+    result: "bridge",
+    resultQty: 1,
+    ingredients: [
+      { item: "log", qty: 2 },
+    ],
+  },
 ];
 
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
+  "stick", "flint", "log", "stone", "iron_ore", "copper_ore", "axe", "pickaxe", "bridge",
 ];
 
 const ITEM_CATEGORIES = [

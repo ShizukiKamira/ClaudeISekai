@@ -47,8 +47,8 @@ function renderCraftingTab(ctx, state, x, y, w, h) {
   const rightW = w - leftW - 18;
 
   const recipes = CRAFTING_RECIPES;
-  const cardH = 84;
-  const cardGap = 10;
+  const cardH = 78;
+  const cardGap = 8;
 
   recipes.forEach((recipe, i) => {
     const cy = y + i * (cardH + cardGap);

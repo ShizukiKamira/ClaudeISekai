@@ -239,19 +239,17 @@ function updateOverworld(dt) {
           onComplete: () => npc.onComplete && npc.onComplete(state),
         });
       }
-    } else if (target.x === BED.x && target.y === BED.y) {
-      if (isNightTime(state.turnCount)) {
-        Dialogue.show(["You climb into the bed and pull the blanket up.", "Sleep comes quickly..."], {
-          onComplete: () => {
-            const p = state.player;
-            p.hp = p.maxHp;
-            p.mp = p.maxMp;
-            const remainder = state.turnCount % CYCLE_LENGTH;
-            state.turnCount += CYCLE_LENGTH - remainder;
-          },
-        });
+    } else {
+      const placedAtTarget = state.placedObjects.find((o) => o.x === target.x && o.y === target.y);
+      if (placedAtTarget && placedAtTarget.type === "campfire") {
+        handleCampfireInteract(state);
       } else {
-        Dialogue.show(["It's still daylight. You're not tired yet."]);
+        const tile = state.map[target.y] && state.map[target.y][target.x];
+        if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
+          handleChopTree(state, target.x, target.y);
+        } else if (tile === TILE.ROCK) {
+          handleMineBoulder(state, target.x, target.y);
+        }
       }
     }
   }
@@ -265,7 +263,7 @@ function updatePlacing(dt) {
   }
   if (Input.confirmPressed() && !state.player.moving) {
     const target = facingTile(state.player);
-    if (canPlaceAt(state, target.x, target.y)) {
+    if (canPlaceItemAt(state, state.placingItem, target.x, target.y)) {
       state.placedObjects.push({ type: state.placingItem, x: target.x, y: target.y });
       const entry = state.player.inventory.find((i) => i.item === state.placingItem);
       if (entry) {

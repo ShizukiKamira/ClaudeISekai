@@ -91,7 +91,7 @@ function tryMovePlayer(state, dt) {
 
   const newX = player.tileX + move.x;
   const newY = player.tileY + move.y;
-  if (isWalkable(map, newX, newY) && !isBlockedByEntity(state, newX, newY)) {
+  if (isPassable(state, newX, newY) && !isBlockedByEntity(state, newX, newY)) {
     player.tileX = newX;
     player.tileY = newY;
     player.moving = true;
@@ -99,15 +99,34 @@ function tryMovePlayer(state, dt) {
 }
 
 function isBlockedByEntity(state, x, y) {
-  if (x === BED.x && y === BED.y) return true;
   if (findNpcAt(state, x, y)) return true;
-  return state.placedObjects.some((o) => o.x === x && o.y === y);
+  return state.placedObjects.some((o) => o.x === x && o.y === y && o.type !== "bridge");
+}
+
+// A bridge placed over water makes that one tile crossable, on top of the
+// normal tile-type walkability check.
+function isPassable(state, x, y) {
+  const map = state.map;
+  if (x < 0 || y < 0 || y >= map.length || x >= map[0].length) return false;
+  if (isWalkable(map, x, y)) return true;
+  return map[y][x] === TILE.WATER && state.placedObjects.some((o) => o.type === "bridge" && o.x === x && o.y === y);
 }
 
 function canPlaceAt(state, x, y) {
   if (!isWalkable(state.map, x, y)) return false;
   if (isBlockedByEntity(state, x, y)) return false;
   return !state.monsters.some((m) => m.tileX === x && m.tileY === y);
+}
+
+function canPlaceBridgeAt(state, x, y) {
+  const map = state.map;
+  if (x < 0 || y < 0 || y >= map.length || x >= map[0].length) return false;
+  if (map[y][x] !== TILE.WATER) return false;
+  return !state.placedObjects.some((o) => o.x === x && o.y === y);
+}
+
+function canPlaceItemAt(state, itemId, x, y) {
+  return itemId === "bridge" ? canPlaceBridgeAt(state, x, y) : canPlaceAt(state, x, y);
 }
 
 function isWalkable(map, x, y) {

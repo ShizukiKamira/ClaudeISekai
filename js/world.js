@@ -77,9 +77,12 @@ function renderMap(ctx, state) {
     ctx.stroke();
   }
 
-  // Placed objects (e.g. campfires the player has built)
+  // Placed objects (e.g. campfires and bridges the player has built)
   for (const obj of state.placedObjects) {
     drawPlacedObject(ctx, obj);
+    if (obj.type === "campfire" && isNearPlayer(state, obj.x, obj.y)) {
+      drawInteractPrompt(ctx, obj.x, obj.y);
+    }
   }
 
   // Placement preview (ghost) while the player is choosing where to place an item
@@ -90,9 +93,6 @@ function renderMap(ctx, state) {
     drawPlacedObject(ctx, { type: state.placingItem, x: target.x, y: target.y });
     ctx.restore();
   }
-
-  // Bed
-  drawBed(ctx, state);
 
   // NPCs
   for (const npc of state.npcs) {
@@ -119,8 +119,27 @@ function renderMap(ctx, state) {
 }
 
 function drawPlacedObject(ctx, obj) {
-  const cx = obj.x * TILE_SIZE + TILE_SIZE / 2;
-  const cy = obj.y * TILE_SIZE + TILE_SIZE / 2;
+  const px = obj.x * TILE_SIZE;
+  const py = obj.y * TILE_SIZE;
+  const cx = px + TILE_SIZE / 2;
+  const cy = py + TILE_SIZE / 2;
+
+  if (obj.type === "bridge") {
+    ctx.fillStyle = "#a68a5c";
+    ctx.fillRect(px + 2, py + 6, TILE_SIZE - 4, TILE_SIZE - 12);
+    ctx.strokeStyle = "#6b4a2f";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px + 2, py + 6, TILE_SIZE - 4, TILE_SIZE - 12);
+    for (let i = 0; i < 4; i++) {
+      const lx = px + 6 + i * 8;
+      ctx.beginPath();
+      ctx.moveTo(lx, py + 6);
+      ctx.lineTo(lx, py + TILE_SIZE - 6);
+      ctx.stroke();
+    }
+    return;
+  }
+
   if (obj.type === "campfire") {
     const glow = 14 + Math.sin(performance.now() / 200) * 3;
     ctx.save();
@@ -132,30 +151,6 @@ function drawPlacedObject(ctx, obj) {
     ctx.restore();
   }
   drawItemIcon(ctx, obj.type, cx, cy, TILE_SIZE * 0.85);
-}
-
-function drawBed(ctx, state) {
-  const bx = BED.x * TILE_SIZE;
-  const by = BED.y * TILE_SIZE;
-  ctx.fillStyle = "#6b4a2f";
-  ctx.fillRect(bx + 4, by + 8, TILE_SIZE - 8, TILE_SIZE - 12);
-  ctx.fillStyle = "#e8c9e0";
-  ctx.fillRect(bx + 6, by + 10, TILE_SIZE - 12, 12);
-  ctx.fillStyle = "#f2f2ec";
-  ctx.fillRect(bx + 6, by + 10, 8, 12);
-  ctx.strokeStyle = "#3a2e17";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(bx + 4, by + 8, TILE_SIZE - 8, TILE_SIZE - 12);
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#e8c97a";
-  ctx.font = "bold 11px 'Segoe UI', sans-serif";
-  ctx.fillText("Bed", bx + TILE_SIZE / 2, by - 4);
-  ctx.textAlign = "left";
-
-  if (isNearPlayer(state, BED.x, BED.y)) {
-    drawInteractPrompt(ctx, BED.x, BED.y);
-  }
 }
 
 function isNearPlayer(state, x, y) {
