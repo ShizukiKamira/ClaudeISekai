@@ -35,6 +35,10 @@ function createInitialState() {
     furnaceHold: { active: false, longFired: false },
     furnaceCursor: 0,
     furnaceTarget: null,
+    // Clickable regions from the most recent render, keyed by screen (e.g.
+    // uiHitboxes.craftCards). Populated by each render*() call, read back by
+    // the matching update*() call on the next frame.
+    uiHitboxes: {},
   };
   spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
   return state;
@@ -88,6 +92,18 @@ const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
 canvas.width = VIEWPORT_COLS * TILE_SIZE;
 canvas.height = VIEWPORT_ROWS * TILE_SIZE;
+
+canvas.addEventListener("click", (e) => {
+  const rect = canvas.getBoundingClientRect();
+  Input.clickPos = {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
+});
+
+function pointInRect(px, py, box) {
+  return px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
+}
 
 const Camera = { x: 0, y: 0 };
 
@@ -239,6 +255,13 @@ function updateOverworld(dt) {
       castHotbarSkill(state, i);
     }
   }
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.hotbar || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (hit) {
+      castHotbarSkill(state, hit.idx);
+      Input.clickPos = null;
+    }
+  }
 
   tryMovePlayer(state, dt);
 
@@ -317,6 +340,14 @@ function updateMenu() {
     saveGame(state);
     state.menuFlashMessage = "Game saved.";
     state.menuFlashUntil = performance.now() + 1200;
+  }
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.menuTabs || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (hit) {
+      state.menuTab = hit.tab;
+      state.menuCursor = 0;
+      Input.clickPos = null;
+    }
   }
 
   if (state.menuTab === "inventory") {
@@ -506,7 +537,7 @@ function renderHud() {
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText("I: menu   F: attack   1-9: skills", canvas.width - 130, 20);
+  ctx.fillText("I: menu   F: attack   1-9/click: skills", canvas.width - 130, 20);
 
   if (p.crouching) {
     ctx.fillStyle = "#7cd68a";
@@ -555,12 +586,18 @@ function renderMenu() {
   ctx.strokeStyle = "#e8c97a";
   ctx.strokeRect(panelX, panelY, panelW, panelH);
 
-  ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
-  const headerText = MENU_TABS.map((t) =>
-    t === state.menuTab ? `> ${MENU_TAB_LABELS[t]} <` : MENU_TAB_LABELS[t]
-  ).join("   ");
-  ctx.fillText(headerText, 90, 76);
+  let tabX = 90;
+  const tabY = 76;
+  state.uiHitboxes.menuTabs = [];
+  for (const t of MENU_TABS) {
+    const label = t === state.menuTab ? `> ${MENU_TAB_LABELS[t]} <` : MENU_TAB_LABELS[t];
+    ctx.fillStyle = t === state.menuTab ? "#e8c97a" : "#f2f2ec";
+    ctx.fillText(label, tabX, tabY);
+    const labelW = ctx.measureText(label).width;
+    state.uiHitboxes.menuTabs.push({ tab: t, x: tabX - 8, y: tabY - 22, w: labelW + 16, h: 30 });
+    tabX += labelW + 28;
+  }
 
   if (state.menuTab === "inventory") {
     renderInventoryTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
@@ -581,10 +618,10 @@ function renderMenu() {
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "12px 'Segoe UI', sans-serif";
   const hint = state.menuTab === "inventory"
-    ? "Q: tab   [ ]: category   Arrows: browse   Enter: use/equip   S: save   I/Esc: close"
+    ? "Click a tab/item, or: Q tab   [ ] category   Arrows browse   Enter use/equip   S save   I/Esc close"
     : state.menuTab === "crafting"
-    ? "Q: tab   Arrows: select recipe   Enter: craft   S: save   I/Esc: close"
-    : "Q: tab   1-9: assign active skill to hotbar   S: save   I or Esc: close";
+    ? "Click a tab/recipe, or: Q tab   Arrows select   Enter craft   S save   I/Esc close"
+    : "Click a tab/hotbar slot, or: Q tab   1-9 assign to hotbar   S save   I/Esc close";
   ctx.fillText(hint, 90, canvas.height - 56);
 }
 

@@ -45,6 +45,14 @@ function updateFurnaceUI(state) {
   if (Input.wasPressed("ArrowUp")) state.furnaceCursor = Math.max(0, state.furnaceCursor - 1);
   if (Input.wasPressed("ArrowDown")) state.furnaceCursor = Math.min(SMELTING_RECIPES.length - 1, state.furnaceCursor + 1);
   if (Input.confirmPressed()) smelt(state, SMELTING_RECIPES[state.furnaceCursor]);
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.furnaceCards || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (hit) {
+      state.furnaceCursor = hit.idx;
+      smelt(state, SMELTING_RECIPES[hit.idx]);
+      Input.clickPos = null;
+    }
+  }
 }
 
 function renderFurnaceUI(ctx, state, canvasW, canvasH) {
@@ -66,8 +74,10 @@ function renderFurnaceUI(ctx, state, canvasW, canvasH) {
 
   const cardH = 78, cardGap = 8;
   const fuel = findFuel(state);
+  state.uiHitboxes.furnaceCards = [];
   SMELTING_RECIPES.forEach((recipe, i) => {
     const cy = y + i * (cardH + cardGap);
+    state.uiHitboxes.furnaceCards.push({ idx: i, x, y: cy, w: leftW, h: cardH });
     const selected = state.furnaceCursor === i;
     ctx.fillStyle = selected ? "rgba(232,201,122,0.18)" : "rgba(20,28,20,0.75)";
     ctx.fillRect(x, cy, leftW, cardH);

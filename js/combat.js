@@ -56,6 +56,14 @@ function meleeHitTiles(player) {
   ];
 }
 
+// Attacking doesn't move the player, but it still gives monsters a chance
+// to act - otherwise a player could sit in one spot forever without ever
+// letting other monsters wander, spot them, or the day/night clock advance.
+function advanceTurnForAction(state) {
+  state.turnCount += 1;
+  updateMonstersTurn(state);
+}
+
 // F always swings a melee attack, regardless of class - a mage's active
 // skill (e.g. Fireball) is cast from the hotbar instead, via a number key.
 function tryPlayerAttack(state) {
@@ -68,12 +76,18 @@ function tryPlayerAttack(state) {
   p.lastAttackAt = now;
   resetOutOfCombat(state);
 
+  // Resolve the swing against monsters' current tiles before letting them
+  // take their turn - otherwise an already-alert adjacent monster can
+  // chase-step diagonally out of the hitbox in the same instant and dodge
+  // a swing it was standing right in front of.
   const tiles = meleeHitTiles(p);
   const hits = state.monsters.filter((m) => tiles.some((t) => t.x === m.tileX && t.y === m.tileY));
   for (const m of hits) {
     const dmg = Math.max(2, playerAtk(p) - m.enemy.def + rollVariance());
     damageMonster(state, m, dmg);
   }
+
+  advanceTurnForAction(state);
 }
 
 // Casts the active skill assigned to a hotbar slot (1-9). Passive skills
@@ -98,6 +112,7 @@ function castHotbarSkill(state, slotIndex) {
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
     resetOutOfCombat(state);
     spawnFireball(state, p);
+    advanceTurnForAction(state);
   }
 }
 

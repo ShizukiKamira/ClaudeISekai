@@ -8,7 +8,7 @@ const CLASS_SKILLS = {
     name: "Fireball",
     type: "active",
     costLabel: "8 MP",
-    desc: "Assign this to a hotbar slot (1-9) below, then press that key to hurl a bolt of flame in front of you for roughly 1.6x your Attack in damage.",
+    desc: "Assign to a hotbar slot below, then press or click it to hurl a bolt of flame in front of you for ~1.6x your Attack in damage.",
   },
   swordsman: {
     id: "parry",
@@ -68,20 +68,31 @@ function drawParryIcon(ctx, cx, cy, s) {
 
 // Active skills (Fireball) live on a numbered hotbar slot the player
 // assigns from this tab; passive skills (Parry) are always on and never
-// occupy a slot.
+// occupy a slot. Shared by both the digit-key press and clicking a slot.
+function assignSkillToSlot(state, skill, slotIndex) {
+  const p = state.player;
+  if (p.hotbar[slotIndex] === skill.id) {
+    p.hotbar[slotIndex] = null; // press/click the same slot again to unassign
+  } else {
+    for (let j = 0; j < HOTBAR_SIZE; j++) {
+      if (p.hotbar[j] === skill.id) p.hotbar[j] = null;
+    }
+    p.hotbar[slotIndex] = skill.id;
+  }
+}
+
 function updateSkillsTab(state) {
   const p = state.player;
   const skill = CLASS_SKILLS[p.class];
   if (!skill || skill.type !== "active") return;
   for (let i = 0; i < HOTBAR_SIZE; i++) {
-    if (!Input.wasPressed(`Digit${i + 1}`)) continue;
-    if (p.hotbar[i] === skill.id) {
-      p.hotbar[i] = null; // press the same slot again to unassign
-    } else {
-      for (let j = 0; j < HOTBAR_SIZE; j++) {
-        if (p.hotbar[j] === skill.id) p.hotbar[j] = null;
-      }
-      p.hotbar[i] = skill.id;
+    if (Input.wasPressed(`Digit${i + 1}`)) assignSkillToSlot(state, skill, i);
+  }
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.skillsHotbar || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (hit) {
+      assignSkillToSlot(state, skill, hit.idx);
+      Input.clickPos = null;
     }
   }
 }
@@ -96,6 +107,7 @@ function renderHotbar(ctx, state) {
   const now = performance.now();
   const onCooldown = now < p.attackCooldownUntil;
 
+  state.uiHitboxes.hotbar = [];
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     const sx = startX + i * (slotSize + gap);
     const skillId = p.hotbar[i];
@@ -115,6 +127,7 @@ function renderHotbar(ctx, state) {
     ctx.font = "9px 'Segoe UI', sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(String(i + 1), sx + 2, y + 10);
+    state.uiHitboxes.hotbar.push({ idx: i, x: sx, y, w: slotSize, h: slotSize });
   }
 }
 
@@ -157,11 +170,32 @@ function renderSkillsTab(ctx, state, x, y, w, h) {
     if (skill.type === "active") {
       const slotIdx = p.hotbar.indexOf(skill.id);
       const slotLabel = slotIdx >= 0
-        ? `Hotbar slot ${slotIdx + 1} - press ${slotIdx + 1} again to unassign`
-        : "Not on hotbar - press a number key (1-9) to assign it";
+        ? `Hotbar slot ${slotIdx + 1} - click it (or press ${slotIdx + 1}) to unassign`
+        : "Not on hotbar - click a slot below (or press 1-9) to assign it";
       ctx.fillStyle = slotIdx >= 0 ? "#7cd68a" : "#e88a5a";
       ctx.font = "12px 'Segoe UI', sans-serif";
-      ctx.fillText(slotLabel, x + 140, y + cardH - 18);
+      ctx.fillText(slotLabel, x + 140, y + cardH - 34);
+
+      const miniSize = 22, miniGap = 4;
+      const totalW = HOTBAR_SIZE * miniSize + (HOTBAR_SIZE - 1) * miniGap;
+      const rowX = x + 140;
+      const rowY = y + cardH - 22;
+      state.uiHitboxes.skillsHotbar = [];
+      for (let i = 0; i < HOTBAR_SIZE; i++) {
+        const sx = rowX + i * (miniSize + miniGap);
+        const assigned = p.hotbar[i] === skill.id;
+        ctx.fillStyle = assigned ? "rgba(124,214,138,0.25)" : "rgba(10,14,12,0.6)";
+        ctx.fillRect(sx, rowY, miniSize, miniSize);
+        ctx.strokeStyle = assigned ? "#7cd68a" : "rgba(232,201,122,0.4)";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx, rowY, miniSize, miniSize);
+        ctx.fillStyle = "#cfd8cf";
+        ctx.font = "9px 'Segoe UI', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(String(i + 1), sx + miniSize / 2, rowY + miniSize / 2 + 3);
+        state.uiHitboxes.skillsHotbar.push({ idx: i, x: sx, y: rowY, w: miniSize, h: miniSize });
+      }
+      ctx.textAlign = "left";
     }
   } else {
     ctx.fillStyle = "#9aa89a";

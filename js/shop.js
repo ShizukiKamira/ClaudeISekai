@@ -34,6 +34,19 @@ function updateShop(state) {
     state.shop.filterIndex = (state.shop.filterIndex + 1) % ITEM_CATEGORIES.length;
     state.shop.cursor = 0;
   }
+  if (Input.clickPos) {
+    const modeHit = (state.uiHitboxes.shopModeToggle || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    const catHit = !modeHit && (state.uiHitboxes.shopCategoryTabs || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (modeHit) {
+      state.shop.mode = modeHit.mode;
+      state.shop.cursor = 0;
+      Input.clickPos = null;
+    } else if (catHit) {
+      state.shop.filterIndex = catHit.index;
+      state.shop.cursor = 0;
+      Input.clickPos = null;
+    }
+  }
 
   const listing = getShopListing(state);
   if (listing.length === 0) return;
@@ -46,6 +59,14 @@ function updateShop(state) {
 
   if (Input.confirmPressed()) {
     tradeShopItem(state, listing[state.shop.cursor]);
+  }
+  if (Input.clickPos) {
+    const slotHit = (state.uiHitboxes.shopSlots || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (slotHit) {
+      state.shop.cursor = slotHit.idx;
+      tradeShopItem(state, listing[slotHit.idx]);
+      Input.clickPos = null;
+    }
   }
 }
 
@@ -82,9 +103,18 @@ function renderShop(ctx, state, canvasW, canvasH) {
   ctx.strokeStyle = "#e8c97a";
   ctx.strokeRect(panelX, panelY, panelW, panelH);
 
-  ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
-  ctx.fillText(state.shop.mode === "buy" ? "> Buy <   Sell" : "Buy   > Sell <", panelX + 30, panelY + 36);
+  let modeX = panelX + 30;
+  const modeY = panelY + 36;
+  state.uiHitboxes.shopModeToggle = [];
+  [["buy", "Buy"], ["sell", "Sell"]].forEach(([mode, label]) => {
+    const text = state.shop.mode === mode ? `> ${label} <` : label;
+    ctx.fillStyle = state.shop.mode === mode ? "#e8c97a" : "#cfd8cf";
+    ctx.fillText(text, modeX, modeY);
+    const textW = ctx.measureText(text).width;
+    state.uiHitboxes.shopModeToggle.push({ mode, x: modeX - 8, y: modeY - 22, w: textW + 16, h: 30 });
+    modeX += textW + 24;
+  });
 
   const x = panelX + 30, y = panelY + 56;
   const w = panelW - 60, h = panelH - 56 - 44;
@@ -94,6 +124,7 @@ function renderShop(ctx, state, canvasW, canvasH) {
 
   const catH = 26, catGap = 6;
   const catW = (leftW - catGap * (ITEM_CATEGORIES.length - 1)) / ITEM_CATEGORIES.length;
+  state.uiHitboxes.shopCategoryTabs = [];
   ITEM_CATEGORIES.forEach((cat, i) => {
     const cx = x + i * (catW + catGap);
     const active = i === state.shop.filterIndex;
@@ -106,6 +137,7 @@ function renderShop(ctx, state, canvasW, canvasH) {
     ctx.font = "12px 'Segoe UI', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(cat.label, cx + catW / 2, y + catH / 2 + 4);
+    state.uiHitboxes.shopCategoryTabs.push({ index: i, x: cx, y, w: catW, h: catH });
   });
   ctx.textAlign = "left";
 
@@ -115,6 +147,7 @@ function renderShop(ctx, state, canvasW, canvasH) {
   const slotSize = 54, slotGap = 8;
   const rows = Math.max(3, Math.min(5, Math.floor((gridH + slotGap) / (slotSize + slotGap))));
 
+  state.uiHitboxes.shopSlots = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < SHOP_GRID_COLS; c++) {
       const idx = r * SHOP_GRID_COLS + c;
@@ -123,6 +156,7 @@ function renderShop(ctx, state, canvasW, canvasH) {
       const item = listing[idx];
       const entry = item ? { item: item.item, qty: item.qty } : null;
       drawItemSlot(ctx, sx, sy, slotSize, entry, idx === state.shop.cursor && !!entry);
+      if (item) state.uiHitboxes.shopSlots.push({ idx, x: sx, y: sy, w: slotSize, h: slotSize });
     }
   }
 
@@ -162,5 +196,5 @@ function renderShop(ctx, state, canvasW, canvasH) {
 
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText("Q: buy/sell   [ ]: category   Arrows: browse   Enter: trade   Esc/I: leave", panelX + 30, panelY + panelH - 16);
+  ctx.fillText("Click to browse/trade, or: Q buy/sell   [ ] category   Arrows browse   Enter trade   Esc/I leave", panelX + 30, panelY + panelH - 16);
 }

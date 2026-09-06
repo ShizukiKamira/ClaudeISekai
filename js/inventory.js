@@ -21,6 +21,14 @@ function updateInventoryTab(state) {
     state.menuFilterIndex = (state.menuFilterIndex + 1) % ITEM_CATEGORIES.length;
     state.menuCursor = 0;
   }
+  if (Input.clickPos) {
+    const catHit = (state.uiHitboxes.invCategoryTabs || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (catHit) {
+      state.menuFilterIndex = catHit.index;
+      state.menuCursor = 0;
+      Input.clickPos = null;
+    }
+  }
 
   const items = getFilteredInventory(state, currentCategory(state));
   if (items.length === 0) return;
@@ -41,6 +49,14 @@ function updateInventoryTab(state) {
 
   if (Input.confirmPressed()) {
     useOrEquipItem(state, items[state.menuCursor].item);
+  }
+  if (Input.clickPos) {
+    const slotHit = (state.uiHitboxes.invSlots || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (slotHit) {
+      state.menuCursor = slotHit.idx;
+      useOrEquipItem(state, items[slotHit.idx].item);
+      Input.clickPos = null;
+    }
   }
 }
 
@@ -664,6 +680,7 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
   const catH = 26;
   const catGap = 6;
   const catW = (leftW - catGap * (ITEM_CATEGORIES.length - 1)) / ITEM_CATEGORIES.length;
+  state.uiHitboxes.invCategoryTabs = [];
   ITEM_CATEGORIES.forEach((cat, i) => {
     const cx = x + i * (catW + catGap);
     const active = i === state.menuFilterIndex;
@@ -676,6 +693,7 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
     ctx.font = "12px 'Segoe UI', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(cat.label, cx + catW / 2, y + catH / 2 + 4);
+    state.uiHitboxes.invCategoryTabs.push({ index: i, x: cx, y, w: catW, h: catH });
   });
   ctx.textAlign = "left";
 
@@ -687,6 +705,7 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
   const slotGap = 8;
   const rows = Math.max(3, Math.min(5, Math.floor((gridH + slotGap) / (slotSize + slotGap))));
 
+  state.uiHitboxes.invSlots = [];
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < INVENTORY_GRID_COLS; c++) {
       const idx = r * INVENTORY_GRID_COLS + c;
@@ -694,6 +713,7 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
       const sy = gridY + r * (slotSize + slotGap);
       const entry = items[idx] || null;
       drawItemSlot(ctx, sx, sy, slotSize, entry, idx === state.menuCursor && !!entry);
+      if (entry) state.uiHitboxes.invSlots.push({ idx, x: sx, y: sy, w: slotSize, h: slotSize });
     }
   }
 

@@ -141,7 +141,10 @@ function stepMonstersOnce(state) {
   for (const monster of state.monsters) {
     const dist = chebyshevDist(monster.tileX, monster.tileY, p.tileX, p.tileY);
     if (monster.alert) {
-      stepMonsterToward(state, monster, p.tileX, p.tileY);
+      // Already standing next to the player - fight rather than jockey for
+      // a different adjacent tile (which could carry it off the player's
+      // directional melee hitbox despite staying just as close).
+      if (dist > 1) stepMonsterToward(state, monster, p.tileX, p.tileY);
       monster.chaseTilesLeft -= 1;
       if (monster.chaseTilesLeft <= 0) monster.alert = false;
     } else {

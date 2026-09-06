@@ -130,7 +130,7 @@ function renderMap(ctx, state) {
   drawPlayerFloatText(ctx, state.player);
 
   // Live combat visuals: sword swing flash and fireball projectiles
-  if (performance.now() - state.player.lastAttackAt < 200) {
+  if (performance.now() - state.player.lastAttackAt < SWING_ANIM_MS) {
     drawSwordSwing(ctx, state.player);
   }
   for (const proj of state.projectiles) {
@@ -138,20 +138,36 @@ function renderMap(ctx, state) {
   }
 }
 
-// Flashes a ring over each of the 3 tiles the melee swing just hit.
+const SWING_FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
+const SWING_HALF_SPREAD = Math.PI / 3; // 60 degrees either side of facing, spanning the 3-tile hitbox
+
+// A blade sweeping through the facing direction's 3-tile arc, growing over
+// SWING_ANIM_MS and fading out as it completes.
 function drawSwordSwing(ctx, player) {
-  const tiles = meleeHitTiles(player);
+  const now = performance.now();
+  const t = Math.min(1, (now - player.lastAttackAt) / SWING_ANIM_MS);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const baseAngle = SWING_FACING_ANGLE[player.dir] ?? Math.PI / 2;
+  const startAngle = baseAngle - SWING_HALF_SPREAD;
+  const sweepAngle = startAngle + t * (SWING_HALF_SPREAD * 2);
+  const radius = TILE_SIZE * 1.3;
+
   ctx.save();
-  ctx.globalAlpha = 0.6;
+  ctx.globalAlpha = 0.85 * (1 - t * 0.6);
   ctx.strokeStyle = "#f2f2ec";
-  ctx.lineWidth = 4;
-  for (const t of tiles) {
-    const tx = t.x * TILE_SIZE + TILE_SIZE / 2;
-    const ty = t.y * TILE_SIZE + TILE_SIZE / 2;
-    ctx.beginPath();
-    ctx.arc(tx, ty, 14, 0, Math.PI * 2);
-    ctx.stroke();
-  }
+  ctx.lineWidth = 6;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, sweepAngle);
+  ctx.stroke();
+
+  // a fainter inner arc gives the blade some visual thickness
+  ctx.globalAlpha *= 0.5;
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius * 0.75, startAngle, sweepAngle);
+  ctx.stroke();
   ctx.restore();
 }
 

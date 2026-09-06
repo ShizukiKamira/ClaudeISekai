@@ -62,6 +62,14 @@ function updateCraftingTab(state) {
   if (Input.confirmPressed()) {
     craftRecipe(state, recipes[state.craftCursor]);
   }
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.craftCards || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (hit) {
+      state.craftCursor = hit.idx;
+      craftRecipe(state, recipes[hit.idx]);
+      Input.clickPos = null;
+    }
+  }
 }
 
 function renderCraftingTab(ctx, state, x, y, w, h) {
@@ -75,11 +83,13 @@ function renderCraftingTab(ctx, state, x, y, w, h) {
   const cardW = Math.floor((leftW - cardGap * (cols - 1)) / cols);
   const cardH = 82;
 
+  state.uiHitboxes.craftCards = [];
   recipes.forEach((recipe, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
     const cx0 = x + col * (cardW + cardGap);
     const cy = y + row * (cardH + cardGap);
+    state.uiHitboxes.craftCards.push({ idx: i, x: cx0, y: cy, w: cardW, h: cardH });
     const selected = state.craftCursor === i;
     ctx.fillStyle = selected ? "rgba(232,201,122,0.18)" : "rgba(20,28,20,0.75)";
     ctx.fillRect(cx0, cy, cardW, cardH);

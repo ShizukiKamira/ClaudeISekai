@@ -592,6 +592,7 @@ const INITIAL_FIELD_MONSTERS = 3;
 const PLAYER_MOVE_SPEED = 150; // px/s, was 220 - slower for reaction time
 const MONSTER_MOVE_SPEED = 130; // px/s, was 260
 const ATTACK_COOLDOWN_MS = 500;
+const SWING_ANIM_MS = 200; // how long the melee swing arc animates for
 const MONSTER_ATTACK_INTERVAL_MS = 1300;
 const FIREBALL_SPEED = 260; // px/s
 const FIREBALL_MAX_LIFE_MS = 1500;
