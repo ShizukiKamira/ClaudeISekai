@@ -8,14 +8,14 @@ const CLASS_SKILLS = {
     name: "Fireball",
     type: "active",
     costLabel: "8 MP",
-    desc: "Hurl a bolt of flame for roughly 1.6x your Attack in damage.",
+    desc: "Press F to hurl a bolt of flame in front of you for roughly 1.6x your Attack in damage.",
   },
   swordsman: {
     id: "parry",
     name: "Parry",
     type: "passive",
     costLabel: "Passive",
-    desc: "Always active. 10% chance to parry any incoming attack. 50% chance to parry a blow that would otherwise be fatal - but that reflex can only save you once per battle.",
+    desc: "Always active. 10% chance to parry any incoming attack. 50% chance to parry a blow that would otherwise be fatal - that reflex needs about 15 seconds to recover between uses.",
   },
 };
 

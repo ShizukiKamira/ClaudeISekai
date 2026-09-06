@@ -5,17 +5,22 @@
 const Input = {
   down: new Set(),
   pressed: new Set(), // keys pressed this frame (edge-triggered, cleared after read)
+  heldSince: new Map(), // code -> timestamp the key was first pressed down
 
   init() {
     window.addEventListener("keydown", (e) => {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
         e.preventDefault();
       }
-      if (!this.down.has(e.code)) this.pressed.add(e.code);
+      if (!this.down.has(e.code)) {
+        this.pressed.add(e.code);
+        this.heldSince.set(e.code, performance.now());
+      }
       this.down.add(e.code);
     });
     window.addEventListener("keyup", (e) => {
       this.down.delete(e.code);
+      this.heldSince.delete(e.code);
     });
   },
 
@@ -41,6 +46,21 @@ const Input = {
 
   confirmPressed() {
     return this.wasPressed("Enter") || this.wasPressed("Space") || this.wasPressed("KeyZ");
+  },
+
+  confirmDown() {
+    return this.isDown("Enter") || this.isDown("Space") || this.isDown("KeyZ");
+  },
+
+  confirmHeldMs() {
+    const codes = ["Enter", "Space", "KeyZ"];
+    let maxMs = 0;
+    for (const c of codes) {
+      if (this.heldSince.has(c)) {
+        maxMs = Math.max(maxMs, performance.now() - this.heldSince.get(c));
+      }
+    }
+    return maxMs;
   },
 
   cancelPressed() {

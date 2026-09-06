@@ -8,10 +8,11 @@ const MENU_TAB_LABELS = { inventory: "Inventory", skills: "Skills", crafting: "C
 
 function createInitialState() {
   const state = {
-    mode: "TITLE", // TITLE | INTRO | OVERWORLD | BATTLE | MENU | SHOP | GAMEOVER | VICTORY
+    mode: "TITLE", // TITLE | INTRO | OVERWORLD | MENU | SHOP | FURNACE | GAMEOVER | VICTORY
     map: buildMap(),
     npcs: NPCS,
     monsters: [],
+    projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
     placingItem: null,
@@ -31,6 +32,9 @@ function createInitialState() {
     shopFlashUntil: 0,
     worldFlashMessage: "",
     worldFlashUntil: 0,
+    furnaceHold: { active: false, longFired: false },
+    furnaceCursor: 0,
+    furnaceTarget: null,
   };
   spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
   return state;
@@ -125,14 +129,14 @@ function update(dt) {
     case "OVERWORLD":
       updateOverworld(dt);
       break;
-    case "BATTLE":
-      updateBattle(state);
-      break;
     case "MENU":
       updateMenu();
       break;
     case "SHOP":
       updateShop(state);
+      break;
+    case "FURNACE":
+      updateFurnaceUI(state);
       break;
     case "GAMEOVER":
       if (Input.confirmPressed()) {
@@ -170,7 +174,7 @@ function updateTitle() {
         "Arrow keys / WASD to move. Enter / Space / Z to confirm or talk.",
         "At the start of a new game you'll choose Mage or Swordsman, each with a different weapon and skill.",
         "Press I to open your inventory menu (Q to switch tabs, [ ] to filter items, S to save).",
-        "Walking through tall grass may trigger a battle - choose Attack, Skill, Item, or Run.",
+        "Monsters roam the forest in real time - press F to swing your sword or hurl a fireball, or move away to flee.",
         "Find the Ancient Shrine to the north-east to face the Guardian and complete your story.",
       ], {
         onComplete: () => {
@@ -213,6 +217,10 @@ function updateOverworld(dt) {
     updatePlacing(dt);
     return;
   }
+
+  updateProjectiles(state, dt);
+  updateMonsterCombat(state, dt);
+
   if (Input.menuPressed()) {
     state.mode = "MENU";
     state.menuCursor = 0;
@@ -221,11 +229,24 @@ function updateOverworld(dt) {
   if (Input.wasPressed("KeyC")) {
     state.player.crouching = !state.player.crouching;
   }
+  if (Input.wasPressed("KeyF")) {
+    tryPlayerAttack(state);
+  }
 
   tryMovePlayer(state, dt);
 
-  if (Input.confirmPressed() && !state.player.moving) {
-    const target = facingTile(state.player);
+  const target = facingTile(state.player);
+  const placedAtTarget = state.placedObjects.find((o) => o.x === target.x && o.y === target.y);
+  const facingFurnace = placedAtTarget && placedAtTarget.type === "furnace";
+
+  if (facingFurnace && !state.player.moving) {
+    updateFurnaceHold(state, placedAtTarget);
+  } else if (state.furnaceHold.active) {
+    state.furnaceHold.active = false;
+    state.furnaceHold.longFired = false;
+  }
+
+  if (!facingFurnace && Input.confirmPressed() && !state.player.moving) {
     const npc = findNpcAt(state, target.x, target.y);
     if (npc) {
       if (npc.shop) {
@@ -239,17 +260,14 @@ function updateOverworld(dt) {
           onComplete: () => npc.onComplete && npc.onComplete(state),
         });
       }
+    } else if (placedAtTarget && placedAtTarget.type === "campfire") {
+      handleCampfireInteract(state);
     } else {
-      const placedAtTarget = state.placedObjects.find((o) => o.x === target.x && o.y === target.y);
-      if (placedAtTarget && placedAtTarget.type === "campfire") {
-        handleCampfireInteract(state);
-      } else {
-        const tile = state.map[target.y] && state.map[target.y][target.x];
-        if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
-          handleChopTree(state, target.x, target.y);
-        } else if (tile === TILE.ROCK) {
-          handleMineBoulder(state, target.x, target.y);
-        }
+      const tile = state.map[target.y] && state.map[target.y][target.x];
+      if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
+        handleChopTree(state, target.x, target.y);
+      } else if (tile === TILE.ROCK) {
+        handleMineBoulder(state, target.x, target.y);
       }
     }
   }
@@ -324,9 +342,6 @@ function render() {
       Dialogue.render(ctx, canvas.width, canvas.height);
       renderHud();
       break;
-    case "BATTLE":
-      renderBattle(ctx, state, canvas.width, canvas.height);
-      break;
     case "MENU":
       updateCamera(state);
       ctx.save();
@@ -344,6 +359,15 @@ function render() {
       ctx.restore();
       renderNightOverlay(state);
       renderShop(ctx, state, canvas.width, canvas.height);
+      break;
+    case "FURNACE":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
+      renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
+      renderFurnaceUI(ctx, state, canvas.width, canvas.height);
       break;
     case "GAMEOVER":
       renderEndScreen("You Perished", GAMEOVER_TEXT, "#3d1414", "#c94f4f");
@@ -406,11 +430,11 @@ function renderClassSelect() {
   const options = [
     {
       name: "Mage",
-      blurb: "Channel arcane fire from a distance. Starts with a Wooden Staff and the Fireball spell.",
+      blurb: "Channel arcane fire from a distance. Starts with a Wooden Staff - press F to hurl a Fireball.",
     },
     {
       name: "Swordsman",
-      blurb: "Steel and steady nerves. Starts with a Bronze Sword and the reflexive Parry.",
+      blurb: "Steel and steady nerves. Starts with a Bronze Sword - press F to swing, with a reflexive Parry.",
     },
   ];
   options.forEach((opt, i) => {
@@ -473,7 +497,7 @@ function renderHud() {
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText("Press I for menu", canvas.width - 130, 20);
+  ctx.fillText("I: menu   F: attack", canvas.width - 130, 20);
 
   if (p.crouching) {
     ctx.fillStyle = "#7cd68a";

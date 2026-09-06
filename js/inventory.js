@@ -397,6 +397,65 @@ function drawBridgeIcon(ctx, cx, cy, s) {
   }
 }
 
+function drawFurnaceIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#6b6b63";
+  ctx.fillRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  ctx.strokeStyle = "#3a3a34";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  ctx.fillStyle = "#e8935a";
+  ctx.fillRect(cx - s * 0.16, cy + s * 0.06, s * 0.32, s * 0.18);
+  ctx.strokeStyle = "#2a2a26";
+  ctx.strokeRect(cx - s * 0.16, cy + s * 0.06, s * 0.32, s * 0.18);
+}
+
+function drawIngotIcon(ctx, cx, cy, s, color) {
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.32, cy + s * 0.18);
+  ctx.lineTo(cx - s * 0.2, cy - s * 0.16);
+  ctx.lineTo(cx + s * 0.2, cy - s * 0.16);
+  ctx.lineTo(cx + s * 0.32, cy + s * 0.18);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.3)";
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.14, cy - s * 0.1);
+  ctx.lineTo(cx + s * 0.14, cy - s * 0.1);
+  ctx.lineTo(cx + s * 0.08, cy + s * 0.06);
+  ctx.lineTo(cx - s * 0.2, cy + s * 0.06);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawCraftingTableIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(cx - s * 0.4, cy - s * 0.3, s * 0.8, s * 0.16);
+  ctx.strokeStyle = "#5c4326";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.4, cy - s * 0.3, s * 0.8, s * 0.16);
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(cx - s * 0.32, cy - s * 0.14, s * 0.08, s * 0.44);
+  ctx.fillRect(cx + s * 0.24, cy - s * 0.14, s * 0.08, s * 0.44);
+}
+
+function drawGoldIcon(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.32, 0, Math.PI * 2);
+  ctx.fillStyle = "#e8c97a";
+  ctx.fill();
+  ctx.strokeStyle = "#a9822f";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,0.4)";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.1, cy - s * 0.1, s * 0.08, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -460,6 +519,21 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "bridge":
       drawBridgeIcon(ctx, cx, cy, s);
+      break;
+    case "furnace":
+      drawFurnaceIcon(ctx, cx, cy, s);
+      break;
+    case "iron_ingot":
+      drawIngotIcon(ctx, cx, cy, s, "#c7cdd4");
+      break;
+    case "copper_ingot":
+      drawIngotIcon(ctx, cx, cy, s, "#c97a4a");
+      break;
+    case "crafting_table":
+      drawCraftingTableIcon(ctx, cx, cy, s);
+      break;
+    case "gold":
+      drawGoldIcon(ctx, cx, cy, s);
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);

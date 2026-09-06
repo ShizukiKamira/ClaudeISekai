@@ -10,7 +10,7 @@ function createPlayer() {
     pixelY: PLAYER_START.y * TILE_SIZE,
     moving: false,
     dir: "down",
-    moveSpeed: 220, // pixels per second
+    moveSpeed: PLAYER_MOVE_SPEED,
     level: 1,
     exp: 0,
     expToNext: 30,
@@ -26,6 +26,9 @@ function createPlayer() {
     accessory: null,
     inventory: [],
     crouching: false,
+    attackCooldownUntil: 0,
+    lastAttackAt: -Infinity,
+    fatalParryUsedAt: -Infinity,
   };
 }
 
@@ -146,7 +149,7 @@ function facingTile(player) {
 function onPlayerArrivedTile(state) {
   state.turnCount += state.player.crouching ? 3 : 1;
 
-  if (checkMonsterCollision(state)) return;
+  checkMonsterCollision(state);
 
   const tile = state.map[player_ySafe(state)][player_xSafe(state)];
   if (tile === TILE.SHRINE && !state.flags.bossDefeated) {

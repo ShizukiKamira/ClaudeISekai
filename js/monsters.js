@@ -16,13 +16,38 @@ function spawnFieldMonster(state, x, y, speciesId) {
     pixelY: y * TILE_SIZE,
     moving: false,
     dir: "down",
-    moveSpeed: 260,
+    moveSpeed: MONSTER_MOVE_SPEED,
     alert: false,
     chaseTilesLeft: 0,
-    frozenTurns: 0,
     visionRadius: 3 + Math.floor(Math.random() * 2), // 3-4
+    currentHp: enemy.hp,
+    nextAttackAt: 0,
     enemy,
   });
+}
+
+function spawnBossMonster(state, x, y) {
+  const enemy = { ...BOSS };
+  fieldMonsterSeq += 1;
+  const boss = {
+    id: `boss${fieldMonsterSeq}`,
+    tileX: x,
+    tileY: y,
+    pixelX: x * TILE_SIZE,
+    pixelY: y * TILE_SIZE,
+    moving: false,
+    dir: "down",
+    moveSpeed: MONSTER_MOVE_SPEED,
+    alert: true,
+    chaseTilesLeft: Infinity,
+    visionRadius: 99,
+    currentHp: enemy.hp,
+    nextAttackAt: 0,
+    isBoss: true,
+    enemy,
+  };
+  state.monsters.push(boss);
+  return boss;
 }
 
 function isTileFreeForMonster(state, x, y) {
@@ -113,10 +138,6 @@ function wanderMonster(state, monster) {
 function updateMonstersTurn(state) {
   const p = state.player;
   for (const monster of state.monsters) {
-    if (monster.frozenTurns > 0) {
-      monster.frozenTurns -= 1;
-      continue;
-    }
     const dist = chebyshevDist(monster.tileX, monster.tileY, p.tileX, p.tileY);
     if (monster.alert) {
       stepMonsterToward(state, monster, p.tileX, p.tileY);
@@ -154,12 +175,14 @@ function updateMonsterAnimations(state, dt) {
   }
 }
 
+// Walking onto a monster's tile instantly aggros it (even if it hadn't
+// spotted the player via vision yet) - actual damage is resolved every
+// frame by updateMonsterCombat while the two remain adjacent.
 function checkMonsterCollision(state) {
   const p = state.player;
   const hit = state.monsters.find((m) => m.tileX === p.tileX && m.tileY === p.tileY);
-  if (hit) {
-    startBattle(state, hit.enemy, hit.id);
-    return true;
+  if (hit && !hit.alert) {
+    hit.alert = true;
+    hit.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
   }
-  return false;
 }

@@ -63,25 +63,36 @@ function renderMap(ctx, state) {
     }
   }
 
-  // Item sparkles
+  // Item pickups - rendered with their real icon, gently bobbing
   const t = performance.now() / 300;
   for (const pickup of state.itemPickups) {
     if (pickup.collected) continue;
     const px = pickup.x * TILE_SIZE + TILE_SIZE / 2;
     const py = pickup.y * TILE_SIZE + TILE_SIZE / 2 + Math.sin(t) * 4;
+    ctx.save();
+    ctx.globalAlpha = 0.5;
     ctx.fillStyle = "#fff6c9";
     ctx.beginPath();
-    ctx.arc(px, py, 6, 0, Math.PI * 2);
+    ctx.arc(px, py, 12, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "#e8c97a";
-    ctx.stroke();
+    ctx.restore();
+    const iconId = pickup.item === "class_weapon_upgrade" ? "iron_sword" : pickup.item;
+    drawItemIcon(ctx, iconId, px, py, TILE_SIZE * 0.7);
   }
 
-  // Placed objects (e.g. campfires and bridges the player has built)
+  // Placed objects (e.g. campfires, furnaces, bridges the player has built)
   for (const obj of state.placedObjects) {
     drawPlacedObject(ctx, obj);
     if (obj.type === "campfire" && isNearPlayer(state, obj.x, obj.y)) {
       drawInteractPrompt(ctx, obj.x, obj.y);
+    } else if (obj.type === "furnace" && isNearPlayer(state, obj.x, obj.y)) {
+      drawInteractPrompt(ctx, obj.x, obj.y, "Enter: smelt   Hold: pick up");
+    } else if (obj.type === "crafting_table") {
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#e8c97a";
+      ctx.font = "bold 11px 'Segoe UI', sans-serif";
+      ctx.fillText("Crafting Table", obj.x * TILE_SIZE + TILE_SIZE / 2, obj.y * TILE_SIZE - 4);
+      ctx.textAlign = "left";
     }
   }
 
@@ -116,6 +127,44 @@ function renderMap(ctx, state) {
 
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+
+  // Live combat visuals: sword swing flash and fireball projectiles
+  if (state.player.class === "swordsman" && performance.now() - state.player.lastAttackAt < 200) {
+    drawSwordSwing(ctx, state.player);
+  }
+  for (const proj of state.projectiles) {
+    drawFireball(ctx, proj);
+  }
+}
+
+function drawSwordSwing(ctx, player) {
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const offsets = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+  const [dx, dy] = offsets[player.dir] || offsets.down;
+  const swingCx = cx + dx * TILE_SIZE * 0.6;
+  const swingCy = cy + dy * TILE_SIZE * 0.6;
+  ctx.save();
+  ctx.globalAlpha = 0.7;
+  ctx.strokeStyle = "#f2f2ec";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(swingCx, swingCy, 14, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawFireball(ctx, proj) {
+  ctx.save();
+  ctx.fillStyle = "#e8935a";
+  ctx.beginPath();
+  ctx.arc(proj.x, proj.y, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f6d97a";
+  ctx.beginPath();
+  ctx.arc(proj.x, proj.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 function drawPlacedObject(ctx, obj) {
@@ -153,14 +202,15 @@ function drawPlacedObject(ctx, obj) {
   drawItemIcon(ctx, obj.type, cx, cy, TILE_SIZE * 0.85);
 }
 
+
+
 function isNearPlayer(state, x, y) {
   return chebyshevDist(state.player.tileX, state.player.tileY, x, y) <= 1;
 }
 
-function drawInteractPrompt(ctx, tileX, tileY) {
+function drawInteractPrompt(ctx, tileX, tileY, text = "Press Enter to interact") {
   const cx = tileX * TILE_SIZE + TILE_SIZE / 2;
   const baseY = tileY * TILE_SIZE - 20;
-  const text = "Press Enter to interact";
   ctx.font = "bold 11px 'Segoe UI', sans-serif";
   const textW = ctx.measureText(text).width;
   const boxW = textW + 14;
@@ -177,36 +227,56 @@ function drawInteractPrompt(ctx, tileX, tileY) {
 }
 
 function drawFieldMonster(ctx, monster) {
-  drawCharacter(ctx, monster.pixelX, monster.pixelY, monster.enemy.color, monster.dir, false);
+  const radius = monster.isBoss ? 18 : 12;
+  const flashing = monster.hitFlashUntil && performance.now() < monster.hitFlashUntil;
+  drawCharacter(ctx, monster.pixelX, monster.pixelY, flashing ? "#f2f2ec" : monster.enemy.color, monster.dir, false, radius);
 
   const cx = monster.pixelX + TILE_SIZE / 2;
   ctx.textAlign = "center";
   ctx.fillStyle = "#f2f2ec";
   ctx.font = "bold 11px 'Segoe UI', sans-serif";
-  ctx.fillText(`Lv.${monster.enemy.level}`, cx, monster.pixelY - 4);
+  const label = monster.isBoss ? monster.enemy.name : `Lv.${monster.enemy.level}`;
+  ctx.fillText(label, cx, monster.pixelY - 4);
 
-  if (monster.alert) {
+  const maxHp = monster.enemy.hp;
+  const barW = monster.isBoss ? 60 : 32;
+  const barY = monster.pixelY - (monster.isBoss ? 30 : 18);
+  drawBar(ctx, cx - barW / 2, barY, barW, 5, monster.currentHp / maxHp, monster.isBoss ? "#c94f4f" : "#4fae5a");
+
+  if (monster.alert && !monster.isBoss) {
     ctx.fillStyle = "#e84f4f";
     ctx.font = "bold 20px 'Segoe UI', sans-serif";
-    ctx.fillText("!", cx, monster.pixelY - 18);
+    ctx.fillText("!", cx, monster.pixelY - 34);
   }
+
+  if (monster.floatText && performance.now() < monster.floatText.until) {
+    const remaining = monster.floatText.until - performance.now();
+    const age = 1 - remaining / 700;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - age);
+    ctx.fillStyle = "#ffdf7a";
+    ctx.font = "bold 13px 'Segoe UI', sans-serif";
+    ctx.fillText(monster.floatText.text, cx, monster.pixelY - 40 - age * 14);
+    ctx.restore();
+  }
+
   ctx.textAlign = "left";
 }
 
-function drawCharacter(ctx, px, py, color, dir, isPlayer = false) {
+function drawCharacter(ctx, px, py, color, dir, isPlayer = false, radius = 12) {
   const cx = px + TILE_SIZE / 2;
   const cy = py + TILE_SIZE / 2;
 
   // shadow
   ctx.fillStyle = "rgba(0,0,0,0.3)";
   ctx.beginPath();
-  ctx.ellipse(cx, py + TILE_SIZE - 6, 12, 5, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx, py + TILE_SIZE - 6, radius, radius * 0.42, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // body
   ctx.fillStyle = color;
   ctx.beginPath();
-  ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
   // outline
@@ -216,11 +286,12 @@ function drawCharacter(ctx, px, py, color, dir, isPlayer = false) {
 
   // facing indicator
   ctx.fillStyle = "#111";
+  const off = radius * 0.5;
   const offsets = {
-    up: [0, -6],
-    down: [0, 6],
-    left: [-6, 0],
-    right: [6, 0],
+    up: [0, -off],
+    down: [0, off],
+    left: [-off, 0],
+    right: [off, 0],
   };
   const [ox, oy] = offsets[dir] || offsets.down;
   ctx.beginPath();

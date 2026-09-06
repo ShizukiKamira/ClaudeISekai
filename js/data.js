@@ -328,6 +328,34 @@ const ITEMS = {
     category: "misc",
     value: 20,
   },
+  furnace: {
+    name: "Furnace",
+    desc: "A makeshift stone furnace. Press Enter to smelt ore into ingots. Hold Enter with a Pickaxe to break it back down.",
+    type: "placeable",
+    category: "misc",
+    value: 30,
+  },
+  iron_ingot: {
+    name: "Iron Ingot",
+    desc: "A refined bar of iron, smelted from ore.",
+    type: "material",
+    category: "ingredients",
+    value: 20,
+  },
+  copper_ingot: {
+    name: "Copper Ingot",
+    desc: "A refined bar of copper, smelted from ore.",
+    type: "material",
+    category: "ingredients",
+    value: 16,
+  },
+  crafting_table: {
+    name: "Crafting Table",
+    desc: "A sturdy workbench. Being near one unlocks more advanced recipes.",
+    type: "placeable",
+    category: "misc",
+    value: 10,
+  },
 };
 
 const CRAFTING_RECIPES = [
@@ -370,11 +398,42 @@ const CRAFTING_RECIPES = [
       { item: "log", qty: 2 },
     ],
   },
+  {
+    id: "furnace",
+    name: "Furnace",
+    result: "furnace",
+    resultQty: 1,
+    ingredients: [
+      { item: "stone", qty: 5 },
+    ],
+  },
+  {
+    id: "crafting_table",
+    name: "Crafting Table",
+    result: "crafting_table",
+    resultQty: 1,
+    altIngredients: [
+      [{ item: "log", qty: 1 }],
+      [{ item: "stick", qty: 2 }],
+    ],
+  },
+  {
+    id: "iron_sword_crafted",
+    name: "Iron Sword",
+    result: "iron_sword",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "iron_ingot", qty: 2 },
+      { item: "log", qty: 1 },
+    ],
+  },
 ];
 
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
   "stick", "flint", "log", "stone", "iron_ore", "copper_ore", "axe", "pickaxe", "bridge",
+  "furnace", "iron_ingot", "copper_ingot", "crafting_table",
 ];
 
 const ITEM_CATEGORIES = [
@@ -525,3 +584,17 @@ const DAY_MAX_FIELD_MONSTERS = 3;
 const NIGHT_MAX_FIELD_MONSTERS = 10;
 const FIELD_SPAWN_CHANCE = 0.1;
 const INITIAL_FIELD_MONSTERS = 3;
+
+// ---------------------------------------------------------------------------
+// Live combat tuning - real-time swings/casts/monster attacks, not menus
+// ---------------------------------------------------------------------------
+
+const PLAYER_MOVE_SPEED = 150; // px/s, was 220 - slower for reaction time
+const MONSTER_MOVE_SPEED = 130; // px/s, was 260
+const ATTACK_COOLDOWN_MS = 500;
+const MONSTER_ATTACK_INTERVAL_MS = 1300;
+const FIREBALL_SPEED = 260; // px/s
+const FIREBALL_MAX_LIFE_MS = 1500;
+const FIREBALL_MP_COST = 8;
+const FATAL_PARRY_COOLDOWN_MS = 15000;
+const FURNACE_LONG_PRESS_MS = 700;
