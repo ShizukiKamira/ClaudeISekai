@@ -57,6 +57,9 @@ function useOrEquipItem(state, itemId) {
     p.weapon = p.weapon === itemId ? null : itemId;
   } else if (data.type === "accessory") {
     p.accessory = p.accessory === itemId ? null : itemId;
+  } else if (data.type === "placeable") {
+    state.mode = "OVERWORLD";
+    state.placingItem = itemId;
   }
 }
 
@@ -231,6 +234,73 @@ function drawGenericIcon(ctx, cx, cy, s) {
   ctx.strokeRect(cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.6);
 }
 
+function drawStickIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 6);
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(-s * 0.4, -s * 0.07, s * 0.8, s * 0.14);
+  ctx.strokeStyle = "#5c4326";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-s * 0.4, -s * 0.07, s * 0.8, s * 0.14);
+  ctx.restore();
+}
+
+function drawFlintIcon(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.4);
+  ctx.lineTo(cx + s * 0.24, cy - s * 0.05);
+  ctx.lineTo(cx + s * 0.1, cy + s * 0.38);
+  ctx.lineTo(cx - s * 0.14, cy + s * 0.1);
+  ctx.lineTo(cx - s * 0.2, cy - s * 0.12);
+  ctx.closePath();
+  ctx.fillStyle = "#5c6773";
+  ctx.fill();
+  ctx.strokeStyle = "#2f363d";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.3);
+  ctx.lineTo(cx - s * 0.02, cy + s * 0.2);
+  ctx.stroke();
+}
+
+function drawCampfireIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy + s * 0.15);
+  ctx.rotate(-Math.PI / 8);
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(-s * 0.32, -s * 0.05, s * 0.64, s * 0.1);
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(cx, cy + s * 0.15);
+  ctx.rotate(Math.PI / 8);
+  ctx.fillStyle = "#7a5636";
+  ctx.fillRect(-s * 0.32, -s * 0.05, s * 0.64, s * 0.1);
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.42);
+  ctx.quadraticCurveTo(cx + s * 0.22, cy - s * 0.05, cx + s * 0.1, cy + s * 0.2);
+  ctx.quadraticCurveTo(cx, cy + s * 0.08, cx - s * 0.1, cy + s * 0.2);
+  ctx.quadraticCurveTo(cx - s * 0.22, cy - s * 0.05, cx, cy - s * 0.42);
+  ctx.closePath();
+  ctx.fillStyle = "#e8935a";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.22);
+  ctx.quadraticCurveTo(cx + s * 0.1, cy - s * 0.02, cx + s * 0.04, cy + s * 0.12);
+  ctx.quadraticCurveTo(cx, cy + s * 0.04, cx - s * 0.04, cy + s * 0.12);
+  ctx.quadraticCurveTo(cx - s * 0.1, cy - s * 0.02, cx, cy - s * 0.22);
+  ctx.closePath();
+  ctx.fillStyle = "#f6d97a";
+  ctx.fill();
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -264,6 +334,15 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "old_locket":
       drawLocketIcon(ctx, cx, cy, s);
+      break;
+    case "stick":
+      drawStickIcon(ctx, cx, cy, s);
+      break;
+    case "flint":
+      drawFlintIcon(ctx, cx, cy, s);
+      break;
+    case "campfire":
+      drawCampfireIcon(ctx, cx, cy, s);
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);

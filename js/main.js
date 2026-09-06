@@ -3,27 +3,34 @@
 // ---------------------------------------------------------------------------
 
 const SAVE_KEY = "isekai_whispering_wood_save";
+const MENU_TABS = ["inventory", "skills", "crafting"];
+const MENU_TAB_LABELS = { inventory: "Inventory", skills: "Skills", crafting: "Crafting" };
 
 function createInitialState() {
   const state = {
-    mode: "TITLE", // TITLE | INTRO | OVERWORLD | BATTLE | MENU | GAMEOVER | VICTORY
+    mode: "TITLE", // TITLE | INTRO | OVERWORLD | BATTLE | MENU | SHOP | GAMEOVER | VICTORY
     map: buildMap(),
     npcs: NPCS,
     monsters: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
+    placedObjects: [],
+    placingItem: null,
     player: createPlayer(),
     flags: { metFox: false, bossDefeated: false },
     turnCount: 0,
     titleCursor: 0,
     classCursor: 0,
     menuCursor: 0,
-    menuTab: "inventory", // inventory | skills
+    menuTab: "inventory", // inventory | skills | crafting
     menuFilterIndex: 0,
     menuFlashMessage: "",
     menuFlashUntil: 0,
+    craftCursor: 0,
     shop: { mode: "buy", filterIndex: 0, cursor: 0 },
     shopFlashMessage: "",
     shopFlashUntil: 0,
+    worldFlashMessage: "",
+    worldFlashUntil: 0,
   };
   spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
   return state;
@@ -45,6 +52,7 @@ function saveGame(s) {
       player: s.player,
       flags: s.flags,
       itemPickups: s.itemPickups,
+      placedObjects: s.placedObjects,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
     return true;
@@ -61,6 +69,7 @@ function loadGame(s) {
     s.player = Object.assign(createPlayer(), payload.player);
     s.flags = payload.flags || s.flags;
     s.itemPickups = payload.itemPickups || s.itemPickups;
+    s.placedObjects = payload.placedObjects || s.placedObjects;
     return true;
   } catch (e) {
     return false;
@@ -200,6 +209,10 @@ function updateOverworld(dt) {
     Dialogue.update();
     return;
   }
+  if (state.placingItem) {
+    updatePlacing(dt);
+    return;
+  }
   if (Input.menuPressed()) {
     state.mode = "MENU";
     state.menuCursor = 0;
@@ -244,13 +257,37 @@ function updateOverworld(dt) {
   }
 }
 
+function updatePlacing(dt) {
+  tryMovePlayer(state, dt);
+  if (Input.cancelPressed()) {
+    state.placingItem = null;
+    return;
+  }
+  if (Input.confirmPressed() && !state.player.moving) {
+    const target = facingTile(state.player);
+    if (canPlaceAt(state, target.x, target.y)) {
+      state.placedObjects.push({ type: state.placingItem, x: target.x, y: target.y });
+      const entry = state.player.inventory.find((i) => i.item === state.placingItem);
+      if (entry) {
+        entry.qty -= 1;
+        if (entry.qty <= 0) state.player.inventory = state.player.inventory.filter((i) => i.qty > 0);
+      }
+      state.placingItem = null;
+    } else {
+      state.worldFlashMessage = "Can't place it there.";
+      state.worldFlashUntil = performance.now() + 1200;
+    }
+  }
+}
+
 function updateMenu() {
   if (Input.cancelPressed() || Input.menuPressed()) {
     state.mode = "OVERWORLD";
     return;
   }
   if (Input.wasPressed("KeyQ")) {
-    state.menuTab = state.menuTab === "inventory" ? "skills" : "inventory";
+    const idx = MENU_TABS.indexOf(state.menuTab);
+    state.menuTab = MENU_TABS[(idx + 1) % MENU_TABS.length];
     state.menuCursor = 0;
   }
   if (Input.wasPressed("KeyS")) {
@@ -261,6 +298,8 @@ function updateMenu() {
 
   if (state.menuTab === "inventory") {
     updateInventoryTab(state);
+  } else if (state.menuTab === "crafting") {
+    updateCraftingTab(state);
   }
 }
 
@@ -452,6 +491,28 @@ function renderHud() {
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "11px 'Segoe UI', sans-serif";
   ctx.fillText(night ? "Night" : "Day", canvas.width - 108, 46);
+
+  if (performance.now() < state.worldFlashUntil) {
+    ctx.fillStyle = "#e88a5a";
+    ctx.font = "bold 13px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(state.worldFlashMessage, canvas.width / 2, 30);
+    ctx.textAlign = "left";
+  }
+
+  if (state.placingItem) {
+    ctx.fillStyle = "rgba(10,14,12,0.82)";
+    ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
+    ctx.fillStyle = "#e8c97a";
+    ctx.font = "bold 13px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(
+      `Placing ${ITEMS[state.placingItem].name} - Enter to place, Esc to cancel`,
+      canvas.width / 2,
+      canvas.height - 10
+    );
+    ctx.textAlign = "left";
+  }
 }
 
 function renderMenu() {
@@ -463,10 +524,15 @@ function renderMenu() {
 
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
-  ctx.fillText(state.menuTab === "inventory" ? "> Inventory <   Skills" : "Inventory   > Skills <", 90, 76);
+  const headerText = MENU_TABS.map((t) =>
+    t === state.menuTab ? `> ${MENU_TAB_LABELS[t]} <` : MENU_TAB_LABELS[t]
+  ).join("   ");
+  ctx.fillText(headerText, 90, 76);
 
   if (state.menuTab === "inventory") {
     renderInventoryTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
+  } else if (state.menuTab === "crafting") {
+    renderCraftingTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
   } else {
     renderSkillsTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
   }
@@ -483,6 +549,8 @@ function renderMenu() {
   ctx.font = "12px 'Segoe UI', sans-serif";
   const hint = state.menuTab === "inventory"
     ? "Q: tab   [ ]: category   Arrows: browse   Enter: use/equip   S: save   I/Esc: close"
+    : state.menuTab === "crafting"
+    ? "Q: tab   Arrows: select recipe   Enter: craft   S: save   I/Esc: close"
     : "Q: tab   S: save   I or Esc: close";
   ctx.fillText(hint, 90, canvas.height - 56);
 }

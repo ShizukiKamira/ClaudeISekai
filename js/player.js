@@ -100,7 +100,14 @@ function tryMovePlayer(state, dt) {
 
 function isBlockedByEntity(state, x, y) {
   if (x === BED.x && y === BED.y) return true;
-  return !!findNpcAt(state, x, y);
+  if (findNpcAt(state, x, y)) return true;
+  return state.placedObjects.some((o) => o.x === x && o.y === y);
+}
+
+function canPlaceAt(state, x, y) {
+  if (!isWalkable(state.map, x, y)) return false;
+  if (isBlockedByEntity(state, x, y)) return false;
+  return !state.monsters.some((m) => m.tileX === x && m.tileY === y);
 }
 
 function isWalkable(map, x, y) {

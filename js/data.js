@@ -127,6 +127,8 @@ function buildMap() {
     [3, 44], // fox spirit NPC
     [15, 34], // merchant NPC
     [6, 40], [18, 30], [46, 6], [10, 36], [34, 18], [58, 3], // item pickups
+    [10, 40], [22, 32], [36, 22], [50, 14], [8, 20], // stick pickups
+    [16, 26], [44, 10], [28, 36], // flint pickups
   ];
   for (const [x, y] of keepClear) {
     if (grid[y] && grid[y][x] !== undefined && grid[y][x] !== TILE.PATH && grid[y][x] !== TILE.SHRINE) {
@@ -178,6 +180,14 @@ const ITEM_PICKUPS = [
   { id: "pickup_potion2", x: 10, y: 36, item: "hi_potion", qty: 1, collected: false },
   { id: "pickup_potion3", x: 34, y: 18, item: "potion", qty: 1, collected: false },
   { id: "pickup_locket", x: 58, y: 3, item: "old_locket", qty: 1, collected: false },
+  { id: "pickup_stick1", x: 10, y: 40, item: "stick", qty: 1, collected: false },
+  { id: "pickup_stick2", x: 22, y: 32, item: "stick", qty: 1, collected: false },
+  { id: "pickup_stick3", x: 36, y: 22, item: "stick", qty: 1, collected: false },
+  { id: "pickup_stick4", x: 50, y: 14, item: "stick", qty: 1, collected: false },
+  { id: "pickup_stick5", x: 8, y: 20, item: "stick", qty: 1, collected: false },
+  { id: "pickup_flint1", x: 16, y: 26, item: "flint", qty: 1, collected: false },
+  { id: "pickup_flint2", x: 44, y: 10, item: "flint", qty: 1, collected: false },
+  { id: "pickup_flint3", x: 28, y: 36, item: "flint", qty: 1, collected: false },
 ];
 
 const ITEMS = {
@@ -246,7 +256,41 @@ const ITEMS = {
     category: "misc",
     value: 20,
   },
+  stick: {
+    name: "Stick",
+    desc: "A dry branch. Useful for crafting.",
+    type: "material",
+    category: "ingredients",
+    value: 2,
+  },
+  flint: {
+    name: "Flint",
+    desc: "A sharp shard of flint, good for striking a spark.",
+    type: "material",
+    category: "ingredients",
+    value: 4,
+  },
+  campfire: {
+    name: "Campfire",
+    desc: "A portable campfire kit. Select it here to place it on the ground in front of you.",
+    type: "placeable",
+    category: "misc",
+    value: 15,
+  },
 };
+
+const CRAFTING_RECIPES = [
+  {
+    id: "campfire",
+    name: "Campfire",
+    result: "campfire",
+    resultQty: 1,
+    ingredients: [
+      { item: "stick", qty: 3 },
+      { item: "flint", qty: 1 },
+    ],
+  },
+];
 
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",

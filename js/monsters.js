@@ -30,6 +30,7 @@ function isTileFreeForMonster(state, x, y) {
   if (state.map[y][x] === TILE.SHRINE) return false;
   if (findNpcAt(state, x, y)) return false;
   if (state.player.tileX === x && state.player.tileY === y) return false;
+  if (state.placedObjects.some((o) => o.x === x && o.y === y)) return false;
   return !state.monsters.some((m) => m.tileX === x && m.tileY === y);
 }
 

@@ -77,6 +77,20 @@ function renderMap(ctx, state) {
     ctx.stroke();
   }
 
+  // Placed objects (e.g. campfires the player has built)
+  for (const obj of state.placedObjects) {
+    drawPlacedObject(ctx, obj);
+  }
+
+  // Placement preview (ghost) while the player is choosing where to place an item
+  if (state.placingItem) {
+    const target = facingTile(state.player);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    drawPlacedObject(ctx, { type: state.placingItem, x: target.x, y: target.y });
+    ctx.restore();
+  }
+
   // Bed
   drawBed(ctx, state);
 
@@ -102,6 +116,22 @@ function renderMap(ctx, state) {
 
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+}
+
+function drawPlacedObject(ctx, obj) {
+  const cx = obj.x * TILE_SIZE + TILE_SIZE / 2;
+  const cy = obj.y * TILE_SIZE + TILE_SIZE / 2;
+  if (obj.type === "campfire") {
+    const glow = 14 + Math.sin(performance.now() / 200) * 3;
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = "#f6a94a";
+    ctx.beginPath();
+    ctx.arc(cx, cy, glow, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  drawItemIcon(ctx, obj.type, cx, cy, TILE_SIZE * 0.85);
 }
 
 function drawBed(ctx, state) {
