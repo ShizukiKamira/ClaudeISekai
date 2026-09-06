@@ -110,8 +110,9 @@ function stepMonsterToward(state, monster, targetX, targetY) {
   for (const [mx, my] of candidates) {
     const nx = monster.tileX + mx;
     const ny = monster.tileY + my;
-    const isPlayerTile = nx === state.player.tileX && ny === state.player.tileY;
-    if (isPlayerTile || isTileFreeForMonster(state, nx, ny)) {
+    // Monsters may never step onto the player's own tile - isTileFreeForMonster
+    // already excludes it, so a monster simply stops adjacent to give chase.
+    if (isTileFreeForMonster(state, nx, ny)) {
       monster.tileX = nx;
       monster.tileY = ny;
       monster.moving = true;
@@ -135,7 +136,7 @@ function wanderMonster(state, monster) {
   }
 }
 
-function updateMonstersTurn(state) {
+function stepMonstersOnce(state) {
   const p = state.player;
   for (const monster of state.monsters) {
     const dist = chebyshevDist(monster.tileX, monster.tileY, p.tileX, p.tileY);
@@ -152,6 +153,15 @@ function updateMonstersTurn(state) {
         wanderMonster(state, monster);
       }
     }
+  }
+}
+
+// Crouching slows the player but lets alert/wandering monsters cover 2
+// tiles per player turn instead of 1, keeping the stealth tradeoff sharp.
+function updateMonstersTurn(state) {
+  const steps = state.player.crouching ? 2 : 1;
+  for (let i = 0; i < steps; i++) {
+    stepMonstersOnce(state);
   }
   tryMonsterSpawn(state);
 }

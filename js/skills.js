@@ -8,7 +8,7 @@ const CLASS_SKILLS = {
     name: "Fireball",
     type: "active",
     costLabel: "8 MP",
-    desc: "Press F to hurl a bolt of flame in front of you for roughly 1.6x your Attack in damage.",
+    desc: "Assign this to a hotbar slot (1-9) below, then press that key to hurl a bolt of flame in front of you for roughly 1.6x your Attack in damage.",
   },
   swordsman: {
     id: "parry",
@@ -66,6 +66,58 @@ function drawParryIcon(ctx, cx, cy, s) {
   ctx.restore();
 }
 
+// Active skills (Fireball) live on a numbered hotbar slot the player
+// assigns from this tab; passive skills (Parry) are always on and never
+// occupy a slot.
+function updateSkillsTab(state) {
+  const p = state.player;
+  const skill = CLASS_SKILLS[p.class];
+  if (!skill || skill.type !== "active") return;
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (!Input.wasPressed(`Digit${i + 1}`)) continue;
+    if (p.hotbar[i] === skill.id) {
+      p.hotbar[i] = null; // press the same slot again to unassign
+    } else {
+      for (let j = 0; j < HOTBAR_SIZE; j++) {
+        if (p.hotbar[j] === skill.id) p.hotbar[j] = null;
+      }
+      p.hotbar[i] = skill.id;
+    }
+  }
+}
+
+function renderHotbar(ctx, state) {
+  const p = state.player;
+  const slotSize = 34;
+  const gap = 6;
+  const totalW = HOTBAR_SIZE * slotSize + (HOTBAR_SIZE - 1) * gap;
+  const startX = (canvas.width - totalW) / 2;
+  const y = canvas.height - slotSize - 36; // clears the "placing item" bottom bar
+  const now = performance.now();
+  const onCooldown = now < p.attackCooldownUntil;
+
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    const sx = startX + i * (slotSize + gap);
+    const skillId = p.hotbar[i];
+    ctx.save();
+    if (skillId && onCooldown) ctx.globalAlpha = 0.5;
+    ctx.fillStyle = "rgba(10,14,12,0.78)";
+    ctx.fillRect(sx, y, slotSize, slotSize);
+    ctx.strokeStyle = "#e8c97a";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, y, slotSize, slotSize);
+    if (skillId === "fireball") {
+      drawFireballIcon(ctx, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
+    }
+    ctx.restore();
+
+    ctx.fillStyle = "#cfd8cf";
+    ctx.font = "9px 'Segoe UI', sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(String(i + 1), sx + 2, y + 10);
+  }
+}
+
 function renderSkillsTab(ctx, state, x, y, w, h) {
   const p = state.player;
   const leftW = Math.round(w * 0.56);
@@ -101,6 +153,16 @@ function renderSkillsTab(ctx, state, x, y, w, h) {
     ctx.fillStyle = "#cfd8cf";
     ctx.font = "13px 'Segoe UI', sans-serif";
     wrapText(ctx, skill.desc, x + 140, y + 90, leftW - 160, 18);
+
+    if (skill.type === "active") {
+      const slotIdx = p.hotbar.indexOf(skill.id);
+      const slotLabel = slotIdx >= 0
+        ? `Hotbar slot ${slotIdx + 1} - press ${slotIdx + 1} again to unassign`
+        : "Not on hotbar - press a number key (1-9) to assign it";
+      ctx.fillStyle = slotIdx >= 0 ? "#7cd68a" : "#e88a5a";
+      ctx.font = "12px 'Segoe UI', sans-serif";
+      ctx.fillText(slotLabel, x + 140, y + cardH - 18);
+    }
   } else {
     ctx.fillStyle = "#9aa89a";
     ctx.font = "14px 'Segoe UI', sans-serif";

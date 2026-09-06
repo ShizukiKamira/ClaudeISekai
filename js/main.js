@@ -174,7 +174,8 @@ function updateTitle() {
         "Arrow keys / WASD to move. Enter / Space / Z to confirm or talk.",
         "At the start of a new game you'll choose Mage or Swordsman, each with a different weapon and skill.",
         "Press I to open your inventory menu (Q to switch tabs, [ ] to filter items, S to save).",
-        "Monsters roam the forest in real time - press F to swing your sword or hurl a fireball, or move away to flee.",
+        "Monsters roam the forest in real time - press F to swing at the 3 tiles in front of you, or move away to flee.",
+        "Active skills like Fireball are cast from a hotbar - assign one to a number key (1-9) from the Skills tab, then press that key to cast it.",
         "Find the Ancient Shrine to the north-east to face the Guardian and complete your story.",
       ], {
         onComplete: () => {
@@ -197,6 +198,7 @@ function updateClassSelect() {
     if (chosenClass === "mage") {
       state.player.maxMp = 40;
       state.player.mp = 40;
+      state.player.hotbar[0] = "fireball";
     }
     state.mode = "INTRO";
     Dialogue.show(INTRO_TEXT, {
@@ -231,6 +233,11 @@ function updateOverworld(dt) {
   }
   if (Input.wasPressed("KeyF")) {
     tryPlayerAttack(state);
+  }
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (Input.wasPressed(`Digit${i + 1}`)) {
+      castHotbarSkill(state, i);
+    }
   }
 
   tryMovePlayer(state, dt);
@@ -316,6 +323,8 @@ function updateMenu() {
     updateInventoryTab(state);
   } else if (state.menuTab === "crafting") {
     updateCraftingTab(state);
+  } else if (state.menuTab === "skills") {
+    updateSkillsTab(state);
   }
 }
 
@@ -430,7 +439,7 @@ function renderClassSelect() {
   const options = [
     {
       name: "Mage",
-      blurb: "Channel arcane fire from a distance. Starts with a Wooden Staff - press F to hurl a Fireball.",
+      blurb: "Channel arcane fire from a distance. Starts with a Wooden Staff - F to swing it, or cast Fireball from the hotbar.",
     },
     {
       name: "Swordsman",
@@ -497,7 +506,7 @@ function renderHud() {
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText("I: menu   F: attack", canvas.width - 130, 20);
+  ctx.fillText("I: menu   F: attack   1-9: skills", canvas.width - 130, 20);
 
   if (p.crouching) {
     ctx.fillStyle = "#7cd68a";
@@ -535,6 +544,8 @@ function renderHud() {
     );
     ctx.textAlign = "left";
   }
+
+  renderHotbar(ctx, state);
 }
 
 function renderMenu() {
@@ -573,7 +584,7 @@ function renderMenu() {
     ? "Q: tab   [ ]: category   Arrows: browse   Enter: use/equip   S: save   I/Esc: close"
     : state.menuTab === "crafting"
     ? "Q: tab   Arrows: select recipe   Enter: craft   S: save   I/Esc: close"
-    : "Q: tab   S: save   I or Esc: close";
+    : "Q: tab   1-9: assign active skill to hotbar   S: save   I or Esc: close";
   ctx.fillText(hint, 90, canvas.height - 56);
 }
 

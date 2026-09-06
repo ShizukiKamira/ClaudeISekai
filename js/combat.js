@@ -37,13 +37,58 @@ function applyItemEffect(state, itemId) {
   return message;
 }
 
+// The tile directly ahead of the player, plus the tile on either side of
+// it (perpendicular to facing direction), for a 3-tile-wide sword swing.
+function meleeHitTiles(player) {
+  const target = facingTile(player);
+  const facingHorizontally = target.x !== player.tileX;
+  if (facingHorizontally) {
+    return [
+      { x: target.x, y: target.y - 1 },
+      { x: target.x, y: target.y },
+      { x: target.x, y: target.y + 1 },
+    ];
+  }
+  return [
+    { x: target.x - 1, y: target.y },
+    { x: target.x, y: target.y },
+    { x: target.x + 1, y: target.y },
+  ];
+}
+
+// F always swings a melee attack, regardless of class - a mage's active
+// skill (e.g. Fireball) is cast from the hotbar instead, via a number key.
 function tryPlayerAttack(state) {
   const p = state.player;
   if (!p.class) return;
   const now = performance.now();
   if (now < p.attackCooldownUntil) return;
 
-  if (p.class === "mage") {
+  p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
+  p.lastAttackAt = now;
+  resetOutOfCombat(state);
+
+  const tiles = meleeHitTiles(p);
+  const hits = state.monsters.filter((m) => tiles.some((t) => t.x === m.tileX && t.y === m.tileY));
+  for (const m of hits) {
+    const dmg = Math.max(2, playerAtk(p) - m.enemy.def + rollVariance());
+    damageMonster(state, m, dmg);
+  }
+}
+
+// Casts the active skill assigned to a hotbar slot (1-9). Passive skills
+// (e.g. Parry) are always active and never occupy a slot.
+function castHotbarSkill(state, slotIndex) {
+  const p = state.player;
+  const skillId = p.hotbar[slotIndex];
+  if (!skillId) return;
+  const skill = CLASS_SKILLS[p.class];
+  if (!skill || skill.id !== skillId || skill.type !== "active") return;
+
+  const now = performance.now();
+  if (now < p.attackCooldownUntil) return;
+
+  if (skillId === "fireball") {
     if (p.mp < FIREBALL_MP_COST) {
       state.worldFlashMessage = "Not enough MP!";
       state.worldFlashUntil = now + 1000;
@@ -51,19 +96,8 @@ function tryPlayerAttack(state) {
     }
     p.mp -= FIREBALL_MP_COST;
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
-    p.lastAttackAt = now;
+    resetOutOfCombat(state);
     spawnFireball(state, p);
-  } else {
-    p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
-    p.lastAttackAt = now;
-    const target = facingTile(p);
-    const hits = state.monsters.filter(
-      (m) => (m.tileX === target.x && m.tileY === target.y) || (m.tileX === p.tileX && m.tileY === p.tileY)
-    );
-    for (const m of hits) {
-      const dmg = Math.max(2, playerAtk(p) - m.enemy.def + rollVariance());
-      damageMonster(state, m, dmg);
-    }
   }
 }
 
@@ -138,6 +172,8 @@ function resolveMonsterAttack(state, monster) {
     msg = `${enemy.name} attacks!`;
   }
 
+  resetOutOfCombat(state);
+
   const parry = attemptParry(p, dmg);
   if (parry.parried) {
     state.worldFlashMessage = parry.fatal ? "You parry the killing blow!" : "You parry the attack!";
@@ -154,11 +190,45 @@ function resolveMonsterAttack(state, monster) {
 }
 
 function damageMonster(state, monster, dmg) {
+  resetOutOfCombat(state);
   monster.currentHp = Math.max(0, monster.currentHp - dmg);
   monster.hitFlashUntil = performance.now() + 150;
   monster.floatText = { text: `-${dmg}`, until: performance.now() + 700 };
+  // Getting hit (a fireball landing from range, say) wakes the monster up
+  // even if it hadn't spotted the player yet - it comes to fight back.
+  if (!monster.alert) {
+    monster.alert = true;
+    monster.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
+  }
   if (monster.currentHp <= 0) {
     defeatMonster(state, monster);
+  }
+}
+
+// Walking undisturbed slowly mends the player's wounds: after 5 tiles with
+// no combat, every further tile heals a little HP and MP, shown as floating
+// green/blue text above the player.
+function resetOutOfCombat(state) {
+  state.player.tilesOutOfCombat = 0;
+}
+
+function tickOutOfCombatRegen(state) {
+  const p = state.player;
+  p.tilesOutOfCombat += 1;
+  if (p.tilesOutOfCombat <= OUT_OF_COMBAT_TILE_THRESHOLD) return;
+
+  const now = performance.now();
+  if (p.hp < p.maxHp) {
+    const before = p.hp;
+    p.hp = Math.min(p.maxHp, p.hp + HP_REGEN_PER_TILE);
+    const healed = p.hp - before;
+    if (healed > 0) p.hpFloatText = { text: `+${healed}`, until: now + 700 };
+  }
+  if (p.mp < p.maxMp) {
+    const before = p.mp;
+    p.mp = Math.min(p.maxMp, p.mp + MP_REGEN_PER_TILE);
+    const healed = p.mp - before;
+    if (healed > 0) p.mpFloatText = { text: `+${healed}`, until: now + 700 };
   }
 }
 

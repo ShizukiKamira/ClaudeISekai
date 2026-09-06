@@ -29,6 +29,10 @@ function createPlayer() {
     attackCooldownUntil: 0,
     lastAttackAt: -Infinity,
     fatalParryUsedAt: -Infinity,
+    tilesOutOfCombat: 0,
+    hotbar: new Array(HOTBAR_SIZE).fill(null),
+    hpFloatText: null,
+    mpFloatText: null,
   };
 }
 
@@ -65,6 +69,10 @@ function grantExp(state, amount) {
   return messages;
 }
 
+function effectivePlayerSpeed(player) {
+  return player.crouching ? player.moveSpeed * CROUCH_SPEED_MULT : player.moveSpeed;
+}
+
 function tryMovePlayer(state, dt) {
   const player = state.player;
   const map = state.map;
@@ -74,7 +82,7 @@ function tryMovePlayer(state, dt) {
     const targetY = player.tileY * TILE_SIZE;
     const dx = targetX - player.pixelX;
     const dy = targetY - player.pixelY;
-    const dist = player.moveSpeed * dt;
+    const dist = effectivePlayerSpeed(player) * dt;
 
     if (Math.abs(dx) <= dist && Math.abs(dy) <= dist) {
       player.pixelX = targetX;
@@ -103,6 +111,7 @@ function tryMovePlayer(state, dt) {
 
 function isBlockedByEntity(state, x, y) {
   if (findNpcAt(state, x, y)) return true;
+  if (state.monsters.some((m) => m.tileX === x && m.tileY === y)) return true;
   return state.placedObjects.some((o) => o.x === x && o.y === y && o.type !== "bridge");
 }
 
@@ -148,6 +157,7 @@ function facingTile(player) {
 
 function onPlayerArrivedTile(state) {
   state.turnCount += state.player.crouching ? 3 : 1;
+  tickOutOfCombatRegen(state);
 
   checkMonsterCollision(state);
 

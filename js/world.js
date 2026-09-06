@@ -127,9 +127,10 @@ function renderMap(ctx, state) {
 
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+  drawPlayerFloatText(ctx, state.player);
 
   // Live combat visuals: sword swing flash and fireball projectiles
-  if (state.player.class === "swordsman" && performance.now() - state.player.lastAttackAt < 200) {
+  if (performance.now() - state.player.lastAttackAt < 200) {
     drawSwordSwing(ctx, state.player);
   }
   for (const proj of state.projectiles) {
@@ -137,21 +138,46 @@ function renderMap(ctx, state) {
   }
 }
 
+// Flashes a ring over each of the 3 tiles the melee swing just hit.
 function drawSwordSwing(ctx, player) {
-  const cx = player.pixelX + TILE_SIZE / 2;
-  const cy = player.pixelY + TILE_SIZE / 2;
-  const offsets = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  const [dx, dy] = offsets[player.dir] || offsets.down;
-  const swingCx = cx + dx * TILE_SIZE * 0.6;
-  const swingCy = cy + dy * TILE_SIZE * 0.6;
+  const tiles = meleeHitTiles(player);
   ctx.save();
-  ctx.globalAlpha = 0.7;
+  ctx.globalAlpha = 0.6;
   ctx.strokeStyle = "#f2f2ec";
   ctx.lineWidth = 4;
-  ctx.beginPath();
-  ctx.arc(swingCx, swingCy, 14, 0, Math.PI * 2);
-  ctx.stroke();
+  for (const t of tiles) {
+    const tx = t.x * TILE_SIZE + TILE_SIZE / 2;
+    const ty = t.y * TILE_SIZE + TILE_SIZE / 2;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 14, 0, Math.PI * 2);
+    ctx.stroke();
+  }
   ctx.restore();
+}
+
+function drawPlayerFloatText(ctx, player) {
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const now = performance.now();
+  ctx.textAlign = "center";
+  if (player.hpFloatText && now < player.hpFloatText.until) {
+    const age = 1 - (player.hpFloatText.until - now) / 700;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - age);
+    ctx.fillStyle = "#7cd68a";
+    ctx.font = "bold 13px 'Segoe UI', sans-serif";
+    ctx.fillText(player.hpFloatText.text, cx, player.pixelY - 20 - age * 14);
+    ctx.restore();
+  }
+  if (player.mpFloatText && now < player.mpFloatText.until) {
+    const age = 1 - (player.mpFloatText.until - now) / 700;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - age);
+    ctx.fillStyle = "#4f8dae";
+    ctx.font = "bold 13px 'Segoe UI', sans-serif";
+    ctx.fillText(player.mpFloatText.text, cx, player.pixelY - 36 - age * 14);
+    ctx.restore();
+  }
+  ctx.textAlign = "left";
 }
 
 function drawFireball(ctx, proj) {
