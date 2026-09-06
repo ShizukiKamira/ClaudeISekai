@@ -91,11 +91,16 @@ function tryMovePlayer(state, dt) {
 
   const newX = player.tileX + move.x;
   const newY = player.tileY + move.y;
-  if (isWalkable(map, newX, newY)) {
+  if (isWalkable(map, newX, newY) && !isBlockedByEntity(state, newX, newY)) {
     player.tileX = newX;
     player.tileY = newY;
     player.moving = true;
   }
+}
+
+function isBlockedByEntity(state, x, y) {
+  if (x === BED.x && y === BED.y) return true;
+  return !!findNpcAt(state, x, y);
 }
 
 function isWalkable(map, x, y) {
