@@ -21,6 +21,10 @@ function createInitialState() {
     menuFilterIndex: 0,
     menuFlashMessage: "",
     menuFlashUntil: 0,
+    shop: { mode: "buy", filterIndex: 0, cursor: 0 },
+    shopFlashMessage: "",
+    shopFlashUntil: 0,
+    sleepUntil: 0,
   };
   spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
   return state;
@@ -119,6 +123,12 @@ function update(dt) {
     case "MENU":
       updateMenu();
       break;
+    case "SHOP":
+      updateShop(state);
+      break;
+    case "SLEEPING":
+      updateSleeping();
+      break;
     case "GAMEOVER":
       if (Input.confirmPressed()) {
         state = createInitialState();
@@ -199,6 +209,9 @@ function updateOverworld(dt) {
     state.menuCursor = 0;
     return;
   }
+  if (Input.wasPressed("KeyC")) {
+    state.player.crouching = !state.player.crouching;
+  }
 
   tryMovePlayer(state, dt);
 
@@ -210,7 +223,25 @@ function updateOverworld(dt) {
         speaker: npc.name,
         onComplete: () => npc.onComplete && npc.onComplete(state),
       });
+    } else if (target.x === BED.x && target.y === BED.y) {
+      if (isNightTime(state.turnCount)) {
+        state.mode = "SLEEPING";
+        state.sleepUntil = performance.now() + 3000;
+      } else {
+        Dialogue.show(["It's still daylight. You're not tired yet."]);
+      }
     }
+  }
+}
+
+function updateSleeping() {
+  if (performance.now() >= state.sleepUntil) {
+    const p = state.player;
+    p.hp = p.maxHp;
+    p.mp = p.maxMp;
+    const remainder = state.turnCount % CYCLE_LENGTH;
+    state.turnCount += CYCLE_LENGTH - remainder;
+    state.mode = "OVERWORLD";
   }
 }
 
@@ -268,6 +299,18 @@ function render() {
       ctx.restore();
       renderNightOverlay(state);
       renderMenu();
+      break;
+    case "SHOP":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
+      renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
+      renderShop(ctx, state, canvas.width, canvas.height);
+      break;
+    case "SLEEPING":
+      renderSleeping();
       break;
     case "GAMEOVER":
       renderEndScreen("You Perished", GAMEOVER_TEXT, "#3d1414", "#c94f4f");
@@ -353,6 +396,19 @@ function renderClassSelect() {
   ctx.textAlign = "left";
 }
 
+function renderSleeping() {
+  ctx.fillStyle = "#05070d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#cfd8cf";
+  ctx.font = "bold 30px 'Segoe UI', sans-serif";
+  const bob = Math.sin(performance.now() / 400) * 6;
+  ctx.fillText("Zzz...", canvas.width / 2, canvas.height / 2 + bob);
+  ctx.font = "14px 'Segoe UI', sans-serif";
+  ctx.fillText("Sleeping until morning...", canvas.width / 2, canvas.height / 2 + 40);
+  ctx.textAlign = "left";
+}
+
 function renderNightOverlay(state) {
   const darkness = 1 - getDaylightFactor(state.turnCount);
   if (darkness <= 0) return;
@@ -398,6 +454,12 @@ function renderHud() {
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
   ctx.fillText("Press I for menu", canvas.width - 130, 20);
+
+  if (p.crouching) {
+    ctx.fillStyle = "#7cd68a";
+    ctx.font = "bold 12px 'Segoe UI', sans-serif";
+    ctx.fillText("Crouching (C)", canvas.width - 130, 38);
+  }
 
   const night = isNightTime(state.turnCount);
   ctx.fillStyle = night ? "#c9d6f0" : "#f6d97a";

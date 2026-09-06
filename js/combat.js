@@ -99,6 +99,10 @@ function playerFlee(state) {
   }
   if (Math.random() < 0.6) {
     pushLog("You got away safely.");
+    if (Battle.fieldMonsterId) {
+      const monster = state.monsters.find((m) => m.id === Battle.fieldMonsterId);
+      if (monster) monster.frozenTurns = 3;
+    }
     endBattle(state, "flee");
   } else {
     pushLog("Couldn't escape!");

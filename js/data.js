@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 
 const TILE_SIZE = 40;
-const MAP_COLS = 32;
-const MAP_ROWS = 24;
+const MAP_COLS = 64;
+const MAP_ROWS = 48;
 const VIEWPORT_COLS = 20;
 const VIEWPORT_ROWS = 15;
 
@@ -21,7 +21,31 @@ const TILE = {
 
 const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK]);
 
+// Deterministic PRNG (mulberry32) so the procedurally-scattered map is
+// identical on every load while still looking hand-varied.
+function mulberry32(seed) {
+  return function () {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const MAP_SEED = 20240613;
+
+// Waypoints for the winding path from the player's landing spot to the
+// shrine, walked as straight orthogonal segments.
+const PATH_WAYPOINTS = [
+  [2, 44], [2, 34], [14, 34], [14, 20], [30, 20], [30, 8], [48, 8], [48, 3], [60, 3],
+];
+
+const PLAYER_START = { x: 2, y: 44 };
+const BED = { x: 3, y: 43 };
+
 function buildMap() {
+  const rng = mulberry32(MAP_SEED);
   const grid = [];
   for (let y = 0; y < MAP_ROWS; y++) {
     const row = [];
@@ -40,53 +64,84 @@ function buildMap() {
     }
   };
 
+  const randInt = (min, max) => min + Math.floor(rng() * (max - min + 1));
+
   // Tall grass patches (bushes) - where monsters spawn
-  fillRect(3, 3, 6, 5, TILE.TALLGRASS);
-  fillRect(9, 7, 12, 9, TILE.TALLGRASS);
-  fillRect(15, 3, 18, 5, TILE.TALLGRASS);
-  fillRect(3, 10, 6, 12, TILE.TALLGRASS);
-  fillRect(21, 13, 24, 15, TILE.TALLGRASS);
-  fillRect(25, 4, 28, 6, TILE.TALLGRASS);
-  fillRect(7, 16, 10, 18, TILE.TALLGRASS);
-  fillRect(17, 17, 20, 19, TILE.TALLGRASS);
+  for (let i = 0; i < 40; i++) {
+    const w = randInt(3, 5);
+    const h = randInt(3, 5);
+    const x0 = randInt(2, MAP_COLS - w - 3);
+    const y0 = randInt(2, MAP_ROWS - h - 3);
+    fillRect(x0, y0, x0 + w - 1, y0 + h - 1, TILE.TALLGRASS);
+  }
 
   // Ponds
-  fillRect(13, 8, 15, 10, TILE.WATER);
-  fillRect(22, 19, 24, 21, TILE.WATER);
+  for (let i = 0; i < 8; i++) {
+    const w = randInt(2, 4);
+    const h = randInt(2, 4);
+    const x0 = randInt(2, MAP_COLS - w - 3);
+    const y0 = randInt(2, MAP_ROWS - h - 3);
+    fillRect(x0, y0, x0 + w - 1, y0 + h - 1, TILE.WATER);
+  }
 
   // Rock clusters
-  const rockSpots = [[7, 6], [7, 7], [13, 13], [19, 9], [26, 10], [11, 19]];
-  for (const [x, y] of rockSpots) grid[y][x] = TILE.ROCK;
+  for (let i = 0; i < 24; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.ROCK;
+  }
 
-  // Scattered trees for texture (kept clear of the main path/shrine/pickups)
-  const treeSpots = [
-    [8, 3], [8, 4], [19, 4], [19, 17], [5, 7], [24, 8], [27, 9], [4, 8],
-    [24, 18], [13, 17], [28, 12], [16, 10], [21, 6], [9, 14], [15, 15],
-  ];
-  for (const [x, y] of treeSpots) grid[y][x] = TILE.TREE;
+  // Scattered trees for texture
+  for (let i = 0; i < 70; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.TREE;
+  }
 
   // Flowers for flavor
-  const flowerSpots = [[2, 6], [2, 7], [29, 6], [30, 6], [10, 17], [11, 17]];
-  for (const [x, y] of flowerSpots) grid[y][x] = TILE.FLOWER;
+  for (let i = 0; i < 30; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.FLOWER;
+  }
 
   // Path from the player's landing spot to the shrine clearing
-  for (let x = 2; x <= 29; x++) grid[20][x] = TILE.PATH;
-  for (let y = 2; y <= 20; y++) grid[y][29] = TILE.PATH;
+  const carveSegment = (x0, y0, x1, y1) => {
+    if (x0 === x1) {
+      const [ys, ye] = y0 < y1 ? [y0, y1] : [y1, y0];
+      for (let y = ys; y <= ye; y++) grid[y][x0] = TILE.PATH;
+    } else {
+      const [xs, xe] = x0 < x1 ? [x0, x1] : [x1, x0];
+      for (let x = xs; x <= xe; x++) grid[y0][x] = TILE.PATH;
+    }
+  };
+  for (let i = 0; i < PATH_WAYPOINTS.length - 1; i++) {
+    const [x0, y0] = PATH_WAYPOINTS[i];
+    const [x1, y1] = PATH_WAYPOINTS[i + 1];
+    carveSegment(x0, y0, x1, y1);
+  }
 
   // Shrine clearing
-  fillRect(28, 1, 30, 3, TILE.GRASS);
-  grid[2][29] = TILE.SHRINE;
+  fillRect(58, 1, 62, 4, TILE.GRASS);
+  grid[2][60] = TILE.SHRINE;
+
+  // Force structurally important tiles back to walkable ground, in case
+  // the random decoration scatter landed something solid on top of them.
+  const keepClear = [
+    [PLAYER_START.x, PLAYER_START.y],
+    [BED.x, BED.y],
+    [3, 44], // fox spirit NPC
+    [15, 34], // merchant NPC
+    [6, 40], [18, 30], [46, 6], [10, 36], [34, 18], [58, 3], // item pickups
+  ];
+  for (const [x, y] of keepClear) {
+    if (grid[y] && grid[y][x] !== undefined && grid[y][x] !== TILE.PATH && grid[y][x] !== TILE.SHRINE) {
+      grid[y][x] = TILE.GRASS;
+    }
+  }
 
   return grid;
 }
-
-const PLAYER_START = { x: 2, y: 20 };
 
 const NPCS = [
   {
     id: "fox_spirit",
     x: 3,
-    y: 20,
+    y: 44,
     color: "#e8823c",
     name: "Kiri",
     dialogue: [
@@ -106,21 +161,39 @@ const NPCS = [
       }
     },
   },
+  {
+    id: "merchant",
+    x: 15,
+    y: 34,
+    color: "#4f8dae",
+    name: "Old Wren",
+    shop: true,
+    dialogue: [
+      "A traveling merchant hums to herself beside a cart of oddities.",
+      "\"Welcome, welcome. Coin's coin, wherever you're from. Have a look at my wares.\"",
+    ],
+    onComplete: (state) => {
+      state.mode = "SHOP";
+      state.shop.mode = "buy";
+      state.shop.filterIndex = 0;
+      state.shop.cursor = 0;
+    },
+  },
 ];
 
 const ITEM_PICKUPS = [
-  { id: "pickup_potion1", x: 5, y: 4, item: "potion", qty: 1, collected: false },
-  { id: "pickup_gold1", x: 10, y: 8, item: "gold", qty: 25, collected: false },
-  { id: "pickup_sword", x: 26, y: 5, item: "class_weapon_upgrade", qty: 1, collected: false },
-  { id: "pickup_potion2", x: 4, y: 11, item: "hi_potion", qty: 1, collected: false },
-  { id: "pickup_potion3", x: 22, y: 14, item: "potion", qty: 1, collected: false },
-  { id: "pickup_locket", x: 28, y: 2, item: "old_locket", qty: 1, collected: false },
+  { id: "pickup_potion1", x: 6, y: 40, item: "potion", qty: 1, collected: false },
+  { id: "pickup_gold1", x: 18, y: 30, item: "gold", qty: 25, collected: false },
+  { id: "pickup_sword", x: 46, y: 6, item: "class_weapon_upgrade", qty: 1, collected: false },
+  { id: "pickup_potion2", x: 10, y: 36, item: "hi_potion", qty: 1, collected: false },
+  { id: "pickup_potion3", x: 34, y: 18, item: "potion", qty: 1, collected: false },
+  { id: "pickup_locket", x: 58, y: 3, item: "old_locket", qty: 1, collected: false },
 ];
 
 const ITEMS = {
-  potion: { name: "Potion", desc: "Restores 30 HP.", type: "consumable", category: "items", heal: 30 },
-  hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", category: "items", heal: 80 },
-  ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", category: "items", restoreMp: 20 },
+  potion: { name: "Potion", desc: "Restores 30 HP.", type: "consumable", category: "items", heal: 30, value: 15 },
+  hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", category: "items", heal: 80, value: 45 },
+  ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", category: "items", restoreMp: 20, value: 20 },
   gold: { name: "Gold", desc: "Currency of no world in particular.", type: "currency", category: "misc" },
   iron_sword: {
     name: "Iron Sword",
@@ -128,6 +201,7 @@ const ITEMS = {
     type: "weapon",
     category: "weapons",
     atkBonus: 6,
+    value: 60,
   },
   wooden_staff: {
     name: "Wooden Staff",
@@ -135,6 +209,7 @@ const ITEMS = {
     type: "weapon",
     category: "weapons",
     atkBonus: 2,
+    value: 25,
   },
   bronze_sword: {
     name: "Bronze Sword",
@@ -142,6 +217,7 @@ const ITEMS = {
     type: "weapon",
     category: "weapons",
     atkBonus: 4,
+    value: 40,
   },
   magic_staff_1: {
     name: "Magic Staff I",
@@ -149,6 +225,7 @@ const ITEMS = {
     type: "weapon",
     category: "weapons",
     atkBonus: 6,
+    value: 70,
   },
   traveler_charm: {
     name: "Traveler's Charm",
@@ -156,26 +233,34 @@ const ITEMS = {
     type: "accessory",
     category: "accessories",
     defBonus: 3,
+    value: 50,
   },
   slime_gel: {
     name: "Slime Gel",
     desc: "Cool, faintly glowing residue. Useful to alchemists, apparently.",
     type: "material",
     category: "ingredients",
+    value: 5,
   },
   wolf_fang: {
     name: "Wolf Fang",
     desc: "A sharp fang from a Shade Wolf. Still faintly warm.",
     type: "material",
     category: "ingredients",
+    value: 8,
   },
   old_locket: {
     name: "Old Locket",
     desc: "A tarnished locket, warm to the touch. It isn't yours, and yet it feels familiar.",
     type: "misc",
     category: "misc",
+    value: 20,
   },
 };
+
+const MERCHANT_STOCK = [
+  "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
+];
 
 const ITEM_CATEGORIES = [
   { id: "weapons", label: "Weapons" },
@@ -321,6 +406,7 @@ function isNightTime(turnCount) {
 
 const FIELD_CHASE_MIN = 7;
 const FIELD_CHASE_MAX = 10;
-const MAX_FIELD_MONSTERS = 6;
+const DAY_MAX_FIELD_MONSTERS = 3;
+const NIGHT_MAX_FIELD_MONSTERS = 10;
 const FIELD_SPAWN_CHANCE = 0.1;
-const INITIAL_FIELD_MONSTERS = 5;
+const INITIAL_FIELD_MONSTERS = 3;

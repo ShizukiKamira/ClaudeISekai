@@ -25,6 +25,7 @@ function createPlayer() {
     weapon: null,
     accessory: null,
     inventory: [],
+    crouching: false,
   };
 }
 
@@ -112,7 +113,7 @@ function facingTile(player) {
 }
 
 function onPlayerArrivedTile(state) {
-  state.turnCount += 1;
+  state.turnCount += state.player.crouching ? 3 : 1;
 
   if (checkMonsterCollision(state)) return;
 

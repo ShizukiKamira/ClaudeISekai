@@ -19,7 +19,8 @@ function spawnFieldMonster(state, x, y, speciesId) {
     moveSpeed: 260,
     alert: false,
     chaseTilesLeft: 0,
-    visionRadius: 4 + Math.floor(Math.random() * 2), // 4-5
+    frozenTurns: 0,
+    visionRadius: 3 + Math.floor(Math.random() * 2), // 3-4
     enemy,
   });
 }
@@ -55,7 +56,8 @@ function spawnInitialMonsters(state, count) {
 }
 
 function tryMonsterSpawn(state) {
-  if (state.monsters.length >= MAX_FIELD_MONSTERS) return;
+  const cap = isNightTime(state.turnCount) ? NIGHT_MAX_FIELD_MONSTERS : DAY_MAX_FIELD_MONSTERS;
+  if (state.monsters.length >= cap) return;
   if (Math.random() >= FIELD_SPAWN_CHANCE) return;
   const spots = findGrassSpawnSpots(state);
   if (!spots.length) return;
@@ -72,7 +74,6 @@ function stepMonsterToward(state, monster, targetX, targetY) {
   const dx = Math.sign(targetX - monster.tileX);
   const dy = Math.sign(targetY - monster.tileY);
   const candidates = [];
-  if (dx !== 0 && dy !== 0) candidates.push([dx, dy]);
   if (dx !== 0) candidates.push([dx, 0]);
   if (dy !== 0) candidates.push([0, dy]);
   // Perpendicular detours so a single blocking tile (a tree, an NPC) doesn't
@@ -111,16 +112,23 @@ function wanderMonster(state, monster) {
 function updateMonstersTurn(state) {
   const p = state.player;
   for (const monster of state.monsters) {
+    if (monster.frozenTurns > 0) {
+      monster.frozenTurns -= 1;
+      continue;
+    }
     const dist = chebyshevDist(monster.tileX, monster.tileY, p.tileX, p.tileY);
     if (monster.alert) {
       stepMonsterToward(state, monster, p.tileX, p.tileY);
       monster.chaseTilesLeft -= 1;
       if (monster.chaseTilesLeft <= 0) monster.alert = false;
-    } else if (dist <= monster.visionRadius) {
-      monster.alert = true;
-      monster.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
     } else {
-      wanderMonster(state, monster);
+      const effectiveVision = p.crouching ? Math.max(0, monster.visionRadius - 2) : monster.visionRadius;
+      if (dist <= effectiveVision) {
+        monster.alert = true;
+        monster.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
+      } else {
+        wanderMonster(state, monster);
+      }
     }
   }
   tryMonsterSpawn(state);

@@ -77,6 +77,9 @@ function renderMap(ctx, state) {
     ctx.stroke();
   }
 
+  // Bed
+  drawBed(ctx);
+
   // NPCs
   for (const npc of state.npcs) {
     drawCharacter(ctx, npc.x * TILE_SIZE, npc.y * TILE_SIZE, npc.color, "down");
@@ -89,6 +92,20 @@ function renderMap(ctx, state) {
 
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+}
+
+function drawBed(ctx) {
+  const bx = BED.x * TILE_SIZE;
+  const by = BED.y * TILE_SIZE;
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(bx + 4, by + 8, TILE_SIZE - 8, TILE_SIZE - 12);
+  ctx.fillStyle = "#e8c9e0";
+  ctx.fillRect(bx + 6, by + 10, TILE_SIZE - 12, 12);
+  ctx.fillStyle = "#f2f2ec";
+  ctx.fillRect(bx + 6, by + 10, 8, 12);
+  ctx.strokeStyle = "#3a2e17";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx + 4, by + 8, TILE_SIZE - 8, TILE_SIZE - 12);
 }
 
 function drawFieldMonster(ctx, monster) {
