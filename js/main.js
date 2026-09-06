@@ -13,8 +13,9 @@ function createInitialState() {
     player: createPlayer(),
     flags: { metFox: false, bossDefeated: false },
     titleCursor: 0,
+    classCursor: 0,
     menuCursor: 0,
-    menuTab: "status", // status | inventory
+    menuTab: "inventory", // inventory | skills
     menuFilterIndex: 0,
     menuFlashMessage: "",
     menuFlashUntil: 0,
@@ -88,6 +89,9 @@ function update(dt) {
     case "TITLE":
       updateTitle();
       break;
+    case "CLASS_SELECT":
+      updateClassSelect();
+      break;
     case "INTRO":
       Dialogue.update();
       break;
@@ -125,12 +129,8 @@ function updateTitle() {
     const choice = options[state.titleCursor];
     if (choice === "New Game") {
       state = createInitialState();
-      state.mode = "INTRO";
-      Dialogue.show(INTRO_TEXT, {
-        onComplete: () => {
-          state.mode = "OVERWORLD";
-        },
-      });
+      state.mode = "CLASS_SELECT";
+      state.classCursor = 0;
     } else if (choice === "Continue") {
       loadGame(state);
       state.mode = "OVERWORLD";
@@ -138,7 +138,8 @@ function updateTitle() {
       state.mode = "INTRO";
       Dialogue.show([
         "Arrow keys / WASD to move. Enter / Space / Z to confirm or talk.",
-        "Press I to open your status and inventory menu (Q to switch tabs, [ ] to filter items, S to save).",
+        "At the start of a new game you'll choose Mage or Swordsman, each with a different weapon and skill.",
+        "Press I to open your inventory menu (Q to switch tabs, [ ] to filter items, S to save).",
         "Walking through tall grass may trigger a battle - choose Attack, Skill, Item, or Run.",
         "Find the Ancient Shrine to the north-east to face the Guardian and complete your story.",
       ], {
@@ -147,6 +148,24 @@ function updateTitle() {
         },
       });
     }
+  }
+}
+
+function updateClassSelect() {
+  if (Input.wasPressed("ArrowUp") || Input.wasPressed("KeyW")) state.classCursor = 0;
+  if (Input.wasPressed("ArrowDown") || Input.wasPressed("KeyS")) state.classCursor = 1;
+  if (Input.confirmPressed()) {
+    const chosenClass = state.classCursor === 0 ? "mage" : "swordsman";
+    const startWeapon = chosenClass === "mage" ? "wooden_staff" : "bronze_sword";
+    state.player.class = chosenClass;
+    addItem(state, startWeapon, 1);
+    state.player.weapon = startWeapon;
+    state.mode = "INTRO";
+    Dialogue.show(INTRO_TEXT, {
+      onComplete: () => {
+        state.mode = "OVERWORLD";
+      },
+    });
   }
 }
 
@@ -181,7 +200,7 @@ function updateMenu() {
     return;
   }
   if (Input.wasPressed("KeyQ")) {
-    state.menuTab = state.menuTab === "status" ? "inventory" : "status";
+    state.menuTab = state.menuTab === "inventory" ? "skills" : "inventory";
     state.menuCursor = 0;
   }
   if (Input.wasPressed("KeyS")) {
@@ -200,6 +219,9 @@ function render() {
   switch (state.mode) {
     case "TITLE":
       renderTitle();
+      break;
+    case "CLASS_SELECT":
+      renderClassSelect();
       break;
     case "INTRO":
       renderIntroBackdrop();
@@ -263,6 +285,44 @@ function renderTitle() {
   ctx.textAlign = "left";
 }
 
+function renderClassSelect() {
+  const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  grad.addColorStop(0, "#0e1a12");
+  grad.addColorStop(1, "#1f3d2a");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 30px 'Segoe UI', sans-serif";
+  ctx.fillText("Choose Your Path", canvas.width / 2, 130);
+
+  const options = [
+    {
+      name: "Mage",
+      blurb: "Channel arcane fire from a distance. Starts with a Wooden Staff and the Fireball spell.",
+    },
+    {
+      name: "Swordsman",
+      blurb: "Steel and steady nerves. Starts with a Bronze Sword and the reflexive Parry.",
+    },
+  ];
+  options.forEach((opt, i) => {
+    const y = 230 + i * 110;
+    ctx.fillStyle = i === state.classCursor ? "#e8c97a" : "#f2f2ec";
+    ctx.font = "24px 'Segoe UI', sans-serif";
+    ctx.fillText((i === state.classCursor ? "> " : "") + opt.name, canvas.width / 2, y);
+    ctx.fillStyle = "#cfd8cf";
+    ctx.font = "14px 'Segoe UI', sans-serif";
+    wrapText(ctx, opt.blurb, canvas.width / 2, y + 28, 440, 18);
+  });
+
+  ctx.fillStyle = "#8a9a8a";
+  ctx.font = "13px 'Segoe UI', sans-serif";
+  ctx.fillText("Arrow keys to choose - Enter / Space to confirm", canvas.width / 2, canvas.height - 30);
+  ctx.textAlign = "left";
+}
+
 function renderHud() {
   const p = state.player;
   const boxX = 8, boxY = 8, boxW = 210, boxH = 100;
@@ -312,24 +372,12 @@ function renderMenu() {
 
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
-  ctx.fillText(state.menuTab === "status" ? "> Status <   Inventory" : "Status   > Inventory <", 90, 76);
+  ctx.fillText(state.menuTab === "inventory" ? "> Inventory <   Skills" : "Inventory   > Skills <", 90, 76);
 
-  const p = state.player;
-  if (state.menuTab === "status") {
-    ctx.fillStyle = "#f2f2ec";
-    ctx.font = "16px 'Segoe UI', sans-serif";
-    const lines = [
-      `Level: ${p.level}`,
-      `EXP: ${p.exp} / ${p.expToNext}`,
-      `HP: ${p.hp} / ${p.maxHp}`,
-      `MP: ${p.mp} / ${p.maxMp}`,
-      `Attack: ${playerAtk(p)} ${p.weapon ? `(base ${p.baseAtk} + ${ITEMS[p.weapon].atkBonus} ${ITEMS[p.weapon].name})` : ""}`,
-      `Defense: ${playerDef(p)} ${p.accessory ? `(base ${p.baseDef} + ${ITEMS[p.accessory].defBonus} ${ITEMS[p.accessory].name})` : ""}`,
-      `Gold: ${p.gold}`,
-    ];
-    lines.forEach((line, i) => ctx.fillText(line, 100, 120 + i * 28));
-  } else {
+  if (state.menuTab === "inventory") {
     renderInventoryTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
+  } else {
+    renderSkillsTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
   }
 
   if (performance.now() < state.menuFlashUntil) {
@@ -344,7 +392,7 @@ function renderMenu() {
   ctx.font = "12px 'Segoe UI', sans-serif";
   const hint = state.menuTab === "inventory"
     ? "Q: tab   [ ]: category   Arrows: browse   Enter: use/equip   S: save   I/Esc: close"
-    : "Q: switch tab   S: save   I or Esc: close";
+    : "Q: tab   S: save   I or Esc: close";
   ctx.fillText(hint, 90, canvas.height - 56);
 }
 

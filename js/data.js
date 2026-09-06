@@ -105,7 +105,7 @@ const NPCS = [
 const ITEM_PICKUPS = [
   { id: "pickup_potion1", x: 5, y: 4, item: "potion", qty: 1, collected: false },
   { id: "pickup_gold1", x: 10, y: 9, item: "gold", qty: 25, collected: false },
-  { id: "pickup_sword", x: 15, y: 4, item: "iron_sword", qty: 1, collected: false },
+  { id: "pickup_sword", x: 15, y: 4, item: "class_weapon_upgrade", qty: 1, collected: false },
   { id: "pickup_potion2", x: 4, y: 11, item: "hi_potion", qty: 1, collected: false },
   { id: "pickup_locket", x: 16, y: 2, item: "old_locket", qty: 1, collected: false },
 ];
@@ -118,6 +118,27 @@ const ITEMS = {
   iron_sword: {
     name: "Iron Sword",
     desc: "A well-balanced blade. +6 ATK.",
+    type: "weapon",
+    category: "weapons",
+    atkBonus: 6,
+  },
+  wooden_staff: {
+    name: "Wooden Staff",
+    desc: "A simple staff, humming faintly with latent magic. +2 ATK.",
+    type: "weapon",
+    category: "weapons",
+    atkBonus: 2,
+  },
+  bronze_sword: {
+    name: "Bronze Sword",
+    desc: "A well-worn bronze blade, dependable in a fight. +4 ATK.",
+    type: "weapon",
+    category: "weapons",
+    atkBonus: 4,
+  },
+  magic_staff_1: {
+    name: "Magic Staff I",
+    desc: "A staff inscribed with novice glyphs. +6 ATK.",
     type: "weapon",
     category: "weapons",
     atkBonus: 6,

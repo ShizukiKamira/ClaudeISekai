@@ -14,6 +14,7 @@ const Battle = {
   playerTurn: true,
   awaitingContinue: false,
   onEnd: null, // "victory" | "defeat" | "flee"
+  fatalParryUsed: false,
 };
 
 function startRandomEncounter(state) {
@@ -40,6 +41,7 @@ function startBattle(state, enemyTemplate) {
   Battle.playerTurn = true;
   Battle.awaitingContinue = false;
   Battle.onEnd = null;
+  Battle.fatalParryUsed = false;
   state.mode = "BATTLE";
 }
 
@@ -120,16 +122,38 @@ function afterPlayerAction(state) {
   }
 }
 
+function attemptParry(state, incomingDmg) {
+  const p = state.player;
+  if (p.class !== "swordsman") return { parried: false };
+
+  const wouldBeFatal = incomingDmg >= p.hp;
+  if (wouldBeFatal && !Battle.fatalParryUsed) {
+    Battle.fatalParryUsed = true;
+    if (Math.random() < 0.5) return { parried: true, fatal: true };
+  }
+  if (Math.random() < 0.1) return { parried: true, fatal: false };
+  return { parried: false };
+}
+
 function enemyTurn(state) {
   const enemy = Battle.enemy;
   let dmg;
+  let attackLog;
   if (enemy.skill && Math.random() < enemy.skill.chance) {
     dmg = Math.max(3, Math.floor(enemy.atk * enemy.skill.atkMult) - playerDef(state.player) + rollVariance());
-    pushLog(`${enemy.name} uses ${enemy.skill.name}! You take ${dmg} damage.`);
+    attackLog = `${enemy.name} uses ${enemy.skill.name}! You take ${dmg} damage.`;
   } else {
     dmg = Math.max(2, enemy.atk - playerDef(state.player) + rollVariance());
-    pushLog(`${enemy.name} attacks you for ${dmg} damage.`);
+    attackLog = `${enemy.name} attacks you for ${dmg} damage.`;
   }
+
+  const parry = attemptParry(state, dmg);
+  if (parry.parried) {
+    pushLog(parry.fatal ? `You parry the killing blow at the last instant!` : `You parry the attack!`);
+    return;
+  }
+
+  pushLog(attackLog);
   state.player.hp = Math.max(0, state.player.hp - dmg);
   if (state.player.hp <= 0) {
     Battle.awaitingContinue = true;
@@ -313,6 +337,18 @@ function battleMenuOptions(state) {
     ];
   }
   if (Battle.menu === "skill") {
+    if (state.player.class === "swordsman") {
+      return [
+        {
+          label: "Parry (Passive)",
+          action: () => {
+            Battle.menu = "root";
+            pushLog("Parry triggers automatically when you're attacked.");
+          },
+        },
+        { label: "Back", action: () => { Battle.menu = "root"; } },
+      ];
+    }
     return [
       { label: "Fireball (8 MP)", action: () => playerSkillFireball(state) },
       { label: "Back", action: () => { Battle.menu = "root"; } },

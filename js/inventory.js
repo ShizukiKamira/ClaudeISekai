@@ -120,6 +120,25 @@ function drawSwordIcon(ctx, cx, cy, s) {
   ctx.restore();
 }
 
+function drawStaffIcon(ctx, cx, cy, s, gemColor) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 8);
+
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(-s * 0.05, -s * 0.46, s * 0.1, s * 0.86);
+
+  ctx.beginPath();
+  ctx.arc(0, -s * 0.46, s * 0.14, 0, Math.PI * 2);
+  ctx.fillStyle = gemColor;
+  ctx.fill();
+  ctx.strokeStyle = "#c7a75f";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
 function drawCharmIcon(ctx, cx, cy, s) {
   ctx.strokeStyle = "#c7a75f";
   ctx.lineWidth = 2;
@@ -225,7 +244,14 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       drawFlaskIcon(ctx, cx, cy, s, "#4f8dae");
       break;
     case "iron_sword":
+    case "bronze_sword":
       drawSwordIcon(ctx, cx, cy, s);
+      break;
+    case "wooden_staff":
+      drawStaffIcon(ctx, cx, cy, s, "#7aa9c9");
+      break;
+    case "magic_staff_1":
+      drawStaffIcon(ctx, cx, cy, s, "#8e6fce");
       break;
     case "traveler_charm":
       drawCharmIcon(ctx, cx, cy, s);
@@ -325,10 +351,11 @@ function renderPlayerPanel(ctx, state, x, y, w, h) {
   ctx.fillText("Accessory", x + eqGap * 2 + eqSize + eqSize / 2, eqY + eqSize + 13);
   ctx.textAlign = "left";
 
+  const className = p.class === "mage" ? "Mage" : p.class === "swordsman" ? "Swordsman" : "Traveler";
   let sy = eqY + eqSize + 34;
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 14px 'Segoe UI', sans-serif";
-  ctx.fillText(`Lv.${p.level} Traveler`, x, sy);
+  ctx.fillText(`Lv.${p.level} ${className}`, x, sy);
   sy += 16;
 
   ctx.fillStyle = "#cfd8cf";
@@ -347,9 +374,11 @@ function renderPlayerPanel(ctx, state, x, y, w, h) {
   drawBar(ctx, x, sy + 5, w, 9, p.mp / p.maxMp, "#4f8dae");
   sy += 26;
 
+  const atkBonus = p.weapon ? ITEMS[p.weapon].atkBonus || 0 : 0;
+  const defBonus = p.accessory ? ITEMS[p.accessory].defBonus || 0 : 0;
   ctx.font = "12px 'Segoe UI', sans-serif";
-  ctx.fillText(`ATK ${playerAtk(p)}`, x, sy);
-  ctx.fillText(`DEF ${playerDef(p)}`, x + w / 2, sy);
+  ctx.fillText(`ATK ${playerAtk(p)}${atkBonus ? ` (+${atkBonus})` : ""}`, x, sy);
+  ctx.fillText(`DEF ${playerDef(p)}${defBonus ? ` (+${defBonus})` : ""}`, x + w / 2, sy);
   sy += 20;
   ctx.fillText(`Gold ${p.gold}`, x, sy);
 }

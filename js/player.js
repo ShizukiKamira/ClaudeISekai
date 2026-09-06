@@ -21,6 +21,7 @@ function createPlayer() {
     baseAtk: 8,
     baseDef: 3,
     gold: 15,
+    class: null,
     weapon: null,
     accessory: null,
     inventory: [],
@@ -132,8 +133,11 @@ function checkItemPickup(state) {
   for (const pickup of state.itemPickups) {
     if (!pickup.collected && pickup.x === p.tileX && pickup.y === p.tileY) {
       pickup.collected = true;
-      addItem(state, pickup.item, pickup.qty);
-      const itemName = pickup.item === "gold" ? `${pickup.qty} Gold` : ITEMS[pickup.item].name;
+      const itemId = pickup.item === "class_weapon_upgrade"
+        ? (p.class === "mage" ? "magic_staff_1" : "iron_sword")
+        : pickup.item;
+      addItem(state, itemId, pickup.qty);
+      const itemName = itemId === "gold" ? `${pickup.qty} Gold` : ITEMS[itemId].name;
       Dialogue.show([`You found ${itemName}!`]);
     }
   }
