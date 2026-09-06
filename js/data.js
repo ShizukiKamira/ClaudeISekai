@@ -3,8 +3,10 @@
 // ---------------------------------------------------------------------------
 
 const TILE_SIZE = 40;
-const MAP_COLS = 20;
-const MAP_ROWS = 15;
+const MAP_COLS = 32;
+const MAP_ROWS = 24;
+const VIEWPORT_COLS = 20;
+const VIEWPORT_ROWS = 15;
 
 const TILE = {
   GRASS: 0,
@@ -18,7 +20,6 @@ const TILE = {
 };
 
 const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK]);
-const ENCOUNTER_TILES = new Set([TILE.TALLGRASS]);
 
 function buildMap() {
   const grid = [];
@@ -39,48 +40,53 @@ function buildMap() {
     }
   };
 
-  // Tall grass patches (random encounters live here)
+  // Tall grass patches (bushes) - where monsters spawn
   fillRect(3, 3, 6, 5, TILE.TALLGRASS);
-  fillRect(9, 8, 12, 10, TILE.TALLGRASS);
-  fillRect(14, 3, 17, 5, TILE.TALLGRASS);
+  fillRect(9, 7, 12, 9, TILE.TALLGRASS);
+  fillRect(15, 3, 18, 5, TILE.TALLGRASS);
   fillRect(3, 10, 6, 12, TILE.TALLGRASS);
+  fillRect(21, 13, 24, 15, TILE.TALLGRASS);
+  fillRect(25, 4, 28, 6, TILE.TALLGRASS);
+  fillRect(7, 16, 10, 18, TILE.TALLGRASS);
+  fillRect(17, 17, 20, 19, TILE.TALLGRASS);
 
-  // Pond
-  fillRect(13, 9, 15, 11, TILE.WATER);
+  // Ponds
+  fillRect(13, 8, 15, 10, TILE.WATER);
+  fillRect(22, 19, 24, 21, TILE.WATER);
 
   // Rock clusters
-  grid[7][7] = TILE.ROCK;
-  grid[7][8] = TILE.ROCK;
-  grid[6][13] = TILE.ROCK;
+  const rockSpots = [[7, 6], [7, 7], [13, 13], [19, 9], [26, 10], [11, 19]];
+  for (const [x, y] of rockSpots) grid[y][x] = TILE.ROCK;
 
   // Scattered trees for texture (kept clear of the main path/shrine/pickups)
   const treeSpots = [
-    [8, 3], [8, 4], [11, 3], [11, 12], [5, 7], [16, 8], [17, 9], [4, 8], [16, 12],
+    [8, 3], [8, 4], [19, 4], [19, 17], [5, 7], [24, 8], [27, 9], [4, 8],
+    [24, 18], [13, 17], [28, 12], [16, 10], [21, 6], [9, 14], [15, 15],
   ];
   for (const [x, y] of treeSpots) grid[y][x] = TILE.TREE;
 
   // Flowers for flavor
-  const flowerSpots = [[2, 6], [2, 7], [17, 6], [18, 6], [10, 12], [11, 12]];
+  const flowerSpots = [[2, 6], [2, 7], [29, 6], [30, 6], [10, 17], [11, 17]];
   for (const [x, y] of flowerSpots) grid[y][x] = TILE.FLOWER;
 
   // Path from the player's landing spot to the shrine clearing
-  for (let x = 2; x <= 17; x++) grid[13][x] = TILE.PATH;
-  for (let y = 2; y <= 13; y++) grid[y][17] = TILE.PATH;
+  for (let x = 2; x <= 29; x++) grid[20][x] = TILE.PATH;
+  for (let y = 2; y <= 20; y++) grid[y][29] = TILE.PATH;
 
   // Shrine clearing
-  fillRect(16, 1, 18, 3, TILE.GRASS);
-  grid[2][17] = TILE.SHRINE;
+  fillRect(28, 1, 30, 3, TILE.GRASS);
+  grid[2][29] = TILE.SHRINE;
 
   return grid;
 }
 
-const PLAYER_START = { x: 2, y: 12 };
+const PLAYER_START = { x: 2, y: 20 };
 
 const NPCS = [
   {
     id: "fox_spirit",
     x: 3,
-    y: 13,
+    y: 20,
     color: "#e8823c",
     name: "Kiri",
     dialogue: [
@@ -104,10 +110,11 @@ const NPCS = [
 
 const ITEM_PICKUPS = [
   { id: "pickup_potion1", x: 5, y: 4, item: "potion", qty: 1, collected: false },
-  { id: "pickup_gold1", x: 10, y: 9, item: "gold", qty: 25, collected: false },
-  { id: "pickup_sword", x: 15, y: 4, item: "class_weapon_upgrade", qty: 1, collected: false },
+  { id: "pickup_gold1", x: 10, y: 8, item: "gold", qty: 25, collected: false },
+  { id: "pickup_sword", x: 26, y: 5, item: "class_weapon_upgrade", qty: 1, collected: false },
   { id: "pickup_potion2", x: 4, y: 11, item: "hi_potion", qty: 1, collected: false },
-  { id: "pickup_locket", x: 16, y: 2, item: "old_locket", qty: 1, collected: false },
+  { id: "pickup_potion3", x: 22, y: 14, item: "potion", qty: 1, collected: false },
+  { id: "pickup_locket", x: 28, y: 2, item: "old_locket", qty: 1, collected: false },
 ];
 
 const ITEMS = {
@@ -285,3 +292,35 @@ const GAMEOVER_TEXT = [
   "Somewhere, distantly, you feel moss beneath you again.",
   "The forest is patient. It will let you try again.",
 ];
+
+// ---------------------------------------------------------------------------
+// Day/night cycle - driven by tiles moved, not real time or battle turns
+// ---------------------------------------------------------------------------
+
+const DAY_LENGTH = 300;
+const NIGHT_LENGTH = 150;
+const CYCLE_LENGTH = DAY_LENGTH + NIGHT_LENGTH;
+
+function getDaylightFactor(turnCount) {
+  const phase = turnCount % CYCLE_LENGTH;
+  if (phase < DAY_LENGTH) return 1;
+  const nightPhase = phase - DAY_LENGTH; // 0..NIGHT_LENGTH-1
+  const third = NIGHT_LENGTH / 3;
+  if (nightPhase < third) return 1 - nightPhase / third; // dusk: 1 -> 0
+  if (nightPhase < third * 2) return 0; // midnight
+  return (nightPhase - third * 2) / third; // dawn: 0 -> 1
+}
+
+function isNightTime(turnCount) {
+  return turnCount % CYCLE_LENGTH >= DAY_LENGTH;
+}
+
+// ---------------------------------------------------------------------------
+// Field monsters - roaming enemies that spawn from tall grass
+// ---------------------------------------------------------------------------
+
+const FIELD_CHASE_MIN = 7;
+const FIELD_CHASE_MAX = 10;
+const MAX_FIELD_MONSTERS = 6;
+const FIELD_SPAWN_CHANCE = 0.1;
+const INITIAL_FIELD_MONSTERS = 5;

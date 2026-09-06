@@ -15,12 +15,8 @@ const Battle = {
   awaitingContinue: false,
   onEnd: null, // "victory" | "defeat" | "flee"
   fatalParryUsed: false,
+  fieldMonsterId: null,
 };
-
-function startRandomEncounter(state) {
-  const id = RANDOM_ENCOUNTER_TABLE[Math.floor(Math.random() * RANDOM_ENCOUNTER_TABLE.length)];
-  startBattle(state, instantiateEnemy(id));
-}
 
 function triggerShrineEvent(state) {
   Dialogue.show(SHRINE_INTRO_TEXT, {
@@ -28,12 +24,13 @@ function triggerShrineEvent(state) {
   });
 }
 
-function startBattle(state, enemyTemplate) {
+function startBattle(state, enemyTemplate, fieldMonsterId = null) {
   Battle.active = true;
   Battle.enemy = enemyTemplate;
   Battle.enemyHp = enemyTemplate.hp;
   Battle.enemyMaxHp = enemyTemplate.hp;
   Battle.isBoss = !!enemyTemplate.isBoss;
+  Battle.fieldMonsterId = fieldMonsterId;
   const levelTag = enemyTemplate.level ? ` (Lv.${enemyTemplate.level})` : "";
   Battle.log = [`A wild ${enemyTemplate.name}${levelTag} appears!`];
   Battle.menu = "root";
@@ -177,6 +174,8 @@ function onEnemyDefeated(state) {
     state.flags.bossDefeated = true;
     addItem(state, "traveler_charm", 1);
     pushLog("The Guardian's light coalesces into a Traveler's Charm.");
+  } else if (Battle.fieldMonsterId) {
+    state.monsters = state.monsters.filter((m) => m.id !== Battle.fieldMonsterId);
   }
   Battle.awaitingContinue = true;
   Battle.onEnd = Battle.isBoss ? "victory" : "won";

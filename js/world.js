@@ -82,8 +82,30 @@ function renderMap(ctx, state) {
     drawCharacter(ctx, npc.x * TILE_SIZE, npc.y * TILE_SIZE, npc.color, "down");
   }
 
+  // Field monsters
+  for (const monster of state.monsters) {
+    drawFieldMonster(ctx, monster);
+  }
+
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
+}
+
+function drawFieldMonster(ctx, monster) {
+  drawCharacter(ctx, monster.pixelX, monster.pixelY, monster.enemy.color, monster.dir, false);
+
+  const cx = monster.pixelX + TILE_SIZE / 2;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f2f2ec";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  ctx.fillText(`Lv.${monster.enemy.level}`, cx, monster.pixelY - 4);
+
+  if (monster.alert) {
+    ctx.fillStyle = "#e84f4f";
+    ctx.font = "bold 20px 'Segoe UI', sans-serif";
+    ctx.fillText("!", cx, monster.pixelY - 18);
+  }
+  ctx.textAlign = "left";
 }
 
 function drawCharacter(ctx, px, py, color, dir, isPlayer = false) {

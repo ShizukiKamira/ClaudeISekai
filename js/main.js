@@ -5,13 +5,15 @@
 const SAVE_KEY = "isekai_whispering_wood_save";
 
 function createInitialState() {
-  return {
+  const state = {
     mode: "TITLE", // TITLE | INTRO | OVERWORLD | BATTLE | MENU | GAMEOVER | VICTORY
     map: buildMap(),
     npcs: NPCS,
+    monsters: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     player: createPlayer(),
     flags: { metFox: false, bossDefeated: false },
+    turnCount: 0,
     titleCursor: 0,
     classCursor: 0,
     menuCursor: 0,
@@ -20,6 +22,8 @@ function createInitialState() {
     menuFlashMessage: "",
     menuFlashUntil: 0,
   };
+  spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
+  return state;
 }
 
 let state = createInitialState();
@@ -66,8 +70,19 @@ function loadGame(s) {
 
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
-canvas.width = MAP_COLS * TILE_SIZE;
-canvas.height = MAP_ROWS * TILE_SIZE;
+canvas.width = VIEWPORT_COLS * TILE_SIZE;
+canvas.height = VIEWPORT_ROWS * TILE_SIZE;
+
+const Camera = { x: 0, y: 0 };
+
+function updateCamera(state) {
+  const mapPixelW = state.map[0].length * TILE_SIZE;
+  const mapPixelH = state.map.length * TILE_SIZE;
+  const targetX = state.player.pixelX + TILE_SIZE / 2 - canvas.width / 2;
+  const targetY = state.player.pixelY + TILE_SIZE / 2 - canvas.height / 2;
+  Camera.x = Math.max(0, Math.min(targetX, Math.max(0, mapPixelW - canvas.width)));
+  Camera.y = Math.max(0, Math.min(targetY, Math.max(0, mapPixelH - canvas.height)));
+}
 
 Input.init();
 
@@ -160,6 +175,10 @@ function updateClassSelect() {
     state.player.class = chosenClass;
     addItem(state, startWeapon, 1);
     state.player.weapon = startWeapon;
+    if (chosenClass === "mage") {
+      state.player.maxMp = 40;
+      state.player.mp = 40;
+    }
     state.mode = "INTRO";
     Dialogue.show(INTRO_TEXT, {
       onComplete: () => {
@@ -170,6 +189,7 @@ function updateClassSelect() {
 }
 
 function updateOverworld(dt) {
+  updateMonsterAnimations(state, dt);
   if (Dialogue.active) {
     Dialogue.update();
     return;
@@ -228,7 +248,12 @@ function render() {
       Dialogue.render(ctx, canvas.width, canvas.height);
       break;
     case "OVERWORLD":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
       renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
       Dialogue.render(ctx, canvas.width, canvas.height);
       renderHud();
       break;
@@ -236,7 +261,12 @@ function render() {
       renderBattle(ctx, state, canvas.width, canvas.height);
       break;
     case "MENU":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
       renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
       renderMenu();
       break;
     case "GAMEOVER":
@@ -323,6 +353,13 @@ function renderClassSelect() {
   ctx.textAlign = "left";
 }
 
+function renderNightOverlay(state) {
+  const darkness = 1 - getDaylightFactor(state.turnCount);
+  if (darkness <= 0) return;
+  ctx.fillStyle = `rgba(6,10,30,${(darkness * 0.75).toFixed(3)})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 function renderHud() {
   const p = state.player;
   const boxX = 8, boxY = 8, boxW = 210, boxH = 100;
@@ -361,6 +398,15 @@ function renderHud() {
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
   ctx.fillText("Press I for menu", canvas.width - 130, 20);
+
+  const night = isNightTime(state.turnCount);
+  ctx.fillStyle = night ? "#c9d6f0" : "#f6d97a";
+  ctx.beginPath();
+  ctx.arc(canvas.width - 122, 42, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#cfd8cf";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.fillText(night ? "Night" : "Day", canvas.width - 108, 46);
 }
 
 function renderMenu() {

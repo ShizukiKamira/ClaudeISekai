@@ -112,17 +112,19 @@ function facingTile(player) {
 }
 
 function onPlayerArrivedTile(state) {
+  state.turnCount += 1;
+
+  if (checkMonsterCollision(state)) return;
+
   const tile = state.map[player_ySafe(state)][player_xSafe(state)];
-  if (ENCOUNTER_TILES.has(tile)) {
-    if (Math.random() < 0.12) {
-      startRandomEncounter(state);
-      return;
-    }
-  }
   if (tile === TILE.SHRINE && !state.flags.bossDefeated) {
     triggerShrineEvent(state);
+    return;
   }
   checkItemPickup(state);
+
+  updateMonstersTurn(state);
+  checkMonsterCollision(state);
 }
 
 function player_xSafe(state) { return state.player.tileX; }
