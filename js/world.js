@@ -78,7 +78,7 @@ function renderMap(ctx, state) {
   }
 
   // Bed
-  drawBed(ctx);
+  drawBed(ctx, state);
 
   // NPCs
   for (const npc of state.npcs) {
@@ -89,6 +89,9 @@ function renderMap(ctx, state) {
       ctx.font = "bold 11px 'Segoe UI', sans-serif";
       ctx.fillText(`${npc.name} (Merchant)`, npc.x * TILE_SIZE + TILE_SIZE / 2, npc.y * TILE_SIZE - 4);
       ctx.textAlign = "left";
+      if (isNearPlayer(state, npc.x, npc.y)) {
+        drawInteractPrompt(ctx, npc.x, npc.y);
+      }
     }
   }
 
@@ -101,7 +104,7 @@ function renderMap(ctx, state) {
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true);
 }
 
-function drawBed(ctx) {
+function drawBed(ctx, state) {
   const bx = BED.x * TILE_SIZE;
   const by = BED.y * TILE_SIZE;
   ctx.fillStyle = "#6b4a2f";
@@ -118,6 +121,33 @@ function drawBed(ctx) {
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 11px 'Segoe UI', sans-serif";
   ctx.fillText("Bed", bx + TILE_SIZE / 2, by - 4);
+  ctx.textAlign = "left";
+
+  if (isNearPlayer(state, BED.x, BED.y)) {
+    drawInteractPrompt(ctx, BED.x, BED.y);
+  }
+}
+
+function isNearPlayer(state, x, y) {
+  return chebyshevDist(state.player.tileX, state.player.tileY, x, y) <= 1;
+}
+
+function drawInteractPrompt(ctx, tileX, tileY) {
+  const cx = tileX * TILE_SIZE + TILE_SIZE / 2;
+  const baseY = tileY * TILE_SIZE - 20;
+  const text = "Press Enter to interact";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  const textW = ctx.measureText(text).width;
+  const boxW = textW + 14;
+  const boxH = 18;
+  ctx.fillStyle = "rgba(10,14,12,0.85)";
+  ctx.fillRect(cx - boxW / 2, baseY - boxH, boxW, boxH);
+  ctx.strokeStyle = "#e8c97a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - boxW / 2, baseY - boxH, boxW, boxH);
+  ctx.fillStyle = "#f2f2ec";
+  ctx.textAlign = "center";
+  ctx.fillText(text, cx, baseY - 5);
   ctx.textAlign = "left";
 }
 

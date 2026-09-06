@@ -168,16 +168,6 @@ const NPCS = [
     color: "#4f8dae",
     name: "Old Wren",
     shop: true,
-    dialogue: [
-      "A traveling merchant hums to herself beside a cart of oddities.",
-      "\"Welcome, welcome. Coin's coin, wherever you're from. Have a look at my wares.\"",
-    ],
-    onComplete: (state) => {
-      state.mode = "SHOP";
-      state.shop.mode = "buy";
-      state.shop.filterIndex = 0;
-      state.shop.cursor = 0;
-    },
   },
 ];
 
