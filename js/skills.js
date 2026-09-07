@@ -97,38 +97,64 @@ function updateSkillsTab(state) {
   }
 }
 
-function renderHotbar(ctx, state) {
+// Shared by the persistent HUD hotbar (during OVERWORLD) and the Inventory
+// tab's copy of it (the only place a potion drag can reach it, since the
+// HUD one is hidden behind the MENU panel). A slot holds either the class's
+// assigned active skill (dims on the shared attack cooldown, as before) or a
+// dragged-on consumable (dims and counts down its own per-slot cooldown).
+function renderHotbarRow(ctx, state, x, y, slotSize, hitboxKey) {
   const p = state.player;
-  const slotSize = 34;
-  const gap = 6;
-  const totalW = HOTBAR_SIZE * slotSize + (HOTBAR_SIZE - 1) * gap;
-  const startX = (canvas.width - totalW) / 2;
-  const y = canvas.height - slotSize - 36; // clears the "placing item" bottom bar
+  const gap = Math.max(3, Math.round(slotSize * 0.18));
   const now = performance.now();
-  const onCooldown = now < p.attackCooldownUntil;
+  const skill = CLASS_SKILLS[p.class];
+  const onSkillCooldown = now < p.attackCooldownUntil;
 
-  state.uiHitboxes.hotbar = [];
+  state.uiHitboxes[hitboxKey] = [];
   for (let i = 0; i < HOTBAR_SIZE; i++) {
-    const sx = startX + i * (slotSize + gap);
-    const skillId = p.hotbar[i];
+    const sx = x + i * (slotSize + gap);
+    const val = p.hotbar[i];
+    const isSkill = !!skill && val === skill.id;
+    const itemData = !isSkill && val ? ITEMS[val] : null;
+    const itemCooldownRemain = itemData ? Math.max(0, (p.hotbarCooldownUntil[i] || 0) - now) : 0;
+
     ctx.save();
-    if (skillId && onCooldown) ctx.globalAlpha = 0.5;
+    if (isSkill && onSkillCooldown) ctx.globalAlpha = 0.5;
+    if (itemData && itemCooldownRemain > 0) ctx.globalAlpha = 0.4;
     ctx.fillStyle = "rgba(10,14,12,0.78)";
     ctx.fillRect(sx, y, slotSize, slotSize);
     ctx.strokeStyle = "#e8c97a";
     ctx.lineWidth = 1;
     ctx.strokeRect(sx, y, slotSize, slotSize);
-    if (skillId === "fireball") {
+    if (isSkill && val === "fireball") {
       drawFireballIcon(ctx, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
+    } else if (itemData) {
+      drawItemIcon(ctx, val, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
     }
     ctx.restore();
+
+    if (itemData && itemCooldownRemain > 0) {
+      ctx.fillStyle = "#f2f2ec";
+      ctx.font = `bold ${Math.max(10, Math.floor(slotSize * 0.4))}px 'Segoe UI', sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(Math.ceil(itemCooldownRemain / 1000)), sx + slotSize / 2, y + slotSize / 2 + slotSize * 0.15);
+      ctx.textAlign = "left";
+    }
 
     ctx.fillStyle = "#cfd8cf";
     ctx.font = "9px 'Segoe UI', sans-serif";
     ctx.textAlign = "left";
     ctx.fillText(String(i + 1), sx + 2, y + 10);
-    state.uiHitboxes.hotbar.push({ idx: i, x: sx, y, w: slotSize, h: slotSize });
+    state.uiHitboxes[hitboxKey].push({ idx: i, x: sx, y, w: slotSize, h: slotSize });
   }
+}
+
+function renderHotbar(ctx, state) {
+  const slotSize = 34;
+  const gap = 6;
+  const totalW = HOTBAR_SIZE * slotSize + (HOTBAR_SIZE - 1) * gap;
+  const startX = (canvas.width - totalW) / 2;
+  const y = canvas.height - slotSize - 36; // clears the "placing item" bottom bar
+  renderHotbarRow(ctx, state, startX, y, slotSize, "hotbar");
 }
 
 function renderSkillsTab(ctx, state, x, y, w, h) {

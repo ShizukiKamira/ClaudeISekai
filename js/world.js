@@ -251,6 +251,32 @@ function drawFloorTile(ctx, px, py, tx, ty) {
   }
 }
 
+function drawBushTile(ctx, px, py, tx, ty) {
+  drawGrassTile(ctx, px, py, tx, ty);
+  const u = PX_UNIT;
+  ctx.fillStyle = "#255c2a";
+  ctx.beginPath();
+  ctx.ellipse(px + 5 * u, py + 6 * u, 4.4 * u, 3.2 * u, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#3f8a3f";
+  ctx.beginPath();
+  ctx.ellipse(px + 3.4 * u, py + 5 * u, 2.6 * u, 2 * u, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(px + 6.6 * u, py + 5 * u, 2.6 * u, 2 * u, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#4d9a4d";
+  ctx.beginPath();
+  ctx.ellipse(px + 5 * u, py + 4 * u, 2.8 * u, 2 * u, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#8e3f6e";
+  for (const [dx, dy] of [[-0.7, 0.1], [0.7, -0.2], [0, 0.5], [1.4, 0.4], [-1.4, 0.4]]) {
+    ctx.beginPath();
+    ctx.arc(px + (5 + dx) * u, py + (5 + dy) * u, 0.5 * u, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 function drawRugTile(ctx, px, py, tx, ty) {
   drawFloorTile(ctx, px, py, tx, ty);
   const u = PX_UNIT;
@@ -281,6 +307,7 @@ const TILE_DRAWERS = {
   [TILE.DOOR]: drawDoorTile,
   [TILE.FLOOR]: drawFloorTile,
   [TILE.RUG]: drawRugTile,
+  [TILE.BUSH]: drawBushTile,
 };
 
 // Pixel-fantasy corner brackets, dropped onto any UI panel rect to give it a
@@ -358,6 +385,30 @@ function renderMap(ctx, state) {
     }
   }
 
+  // Forage popup for any bush tile within reach of the player - clickable,
+  // unlike the plain facing+Enter gather of a Healing Herb or Moonleaf.
+  state.uiHitboxes.forageButtons = [];
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const tx = state.player.tileX + dx;
+      const ty = state.player.tileY + dy;
+      if (map[ty] && map[ty][tx] === TILE.BUSH) {
+        const rect = drawForagePrompt(ctx, tx, ty);
+        // renderMap draws inside a translate(-Camera.x, -Camera.y), so the
+        // rect above is in world space - convert to canvas/screen space to
+        // match Input.clickPos for hit-testing next frame.
+        state.uiHitboxes.forageButtons.push({
+          tileX: tx,
+          tileY: ty,
+          x: rect.x - Camera.x,
+          y: rect.y - Camera.y,
+          w: rect.w,
+          h: rect.h,
+        });
+      }
+    }
+  }
+
   // Door label - persistent, like the crafting table's, so it reads clearly
   // from a distance rather than only when the player is standing next to it.
   if (state.location === "home") {
@@ -366,13 +417,20 @@ function renderMap(ctx, state) {
     drawDoorLabel(ctx, HOME_EXTERIOR.doorX, HOME_EXTERIOR.doorY, "Your Cabin");
   }
 
-  // Placement preview (ghost) while the player is choosing where to place an item
+  // Placement preview (ghost) while the player is choosing where to place an
+  // item - it follows the mouse cursor rather than only the facing tile, and
+  // is tinted green/red to show whether the hovered tile is a legal spot.
   if (state.placingItem) {
-    const target = facingTile(state.player);
+    const target = state.placeHoverTile || facingTile(state.player);
+    const inRange = chebyshevDist(target.x, target.y, state.player.tileX, state.player.tileY) <= PLACEMENT_RANGE;
+    const valid = inRange && canPlaceItemAt(state, state.placingItem, target.x, target.y);
     ctx.save();
     ctx.globalAlpha = 0.5;
     drawPlacedObject(ctx, { type: state.placingItem, x: target.x, y: target.y });
     ctx.restore();
+    ctx.strokeStyle = valid ? "#7cd68a" : "#e84f4f";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(target.x * TILE_SIZE + 1, target.y * TILE_SIZE + 1, TILE_SIZE - 2, TILE_SIZE - 2);
   }
 
   // NPCs
@@ -631,6 +689,30 @@ function drawInteractPrompt(ctx, tileX, tileY, text = "Press Enter to interact")
   ctx.textAlign = "center";
   ctx.fillText(text, cx, baseY - 5);
   ctx.textAlign = "left";
+}
+
+// Like drawInteractPrompt, but returns its own rect (in the same world-space
+// coordinates it drew in) so renderMap can convert it to a clickable hitbox.
+function drawForagePrompt(ctx, tileX, tileY) {
+  const text = "Forage";
+  const cx = tileX * TILE_SIZE + TILE_SIZE / 2;
+  const baseY = tileY * TILE_SIZE - 20;
+  ctx.font = "bold 12px 'Segoe UI', sans-serif";
+  const textW = ctx.measureText(text).width;
+  const boxW = textW + 20;
+  const boxH = 20;
+  const bx = cx - boxW / 2;
+  const by = baseY - boxH;
+  ctx.fillStyle = "rgba(37,92,42,0.9)";
+  ctx.fillRect(bx, by, boxW, boxH);
+  ctx.strokeStyle = "#9adf7a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(bx, by, boxW, boxH);
+  ctx.fillStyle = "#f2f2ec";
+  ctx.textAlign = "center";
+  ctx.fillText(text, cx, by + boxH - 6);
+  ctx.textAlign = "left";
+  return { x: bx, y: by, w: boxW, h: boxH };
 }
 
 function drawFieldMonster(ctx, monster) {

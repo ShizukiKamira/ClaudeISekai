@@ -6,6 +6,7 @@
 const SMELTING_RECIPES = [
   { id: "iron_ingot", name: "Iron Ingot", result: "iron_ingot", resultQty: 1, ore: "iron_ore", oreQty: 1 },
   { id: "copper_ingot", name: "Copper Ingot", result: "copper_ingot", resultQty: 1, ore: "copper_ore", oreQty: 1 },
+  { id: "purified_water", name: "Purified Water", result: "purified_water", resultQty: 1, ore: "dirty_water", oreQty: 1, verb: "Boiled" },
 ];
 const FURNACE_FUEL_ITEMS = ["log", "stick"];
 
@@ -33,7 +34,7 @@ function smelt(state, recipe) {
   fuelEntry.qty -= 1;
   state.player.inventory = state.player.inventory.filter((i) => i.qty > 0);
   addItem(state, recipe.result, recipe.resultQty);
-  state.menuFlashMessage = `Smelted ${ITEMS[recipe.result].name} (used ${ITEMS[fuel].name} as fuel).`;
+  state.menuFlashMessage = `${recipe.verb || "Smelted"} ${ITEMS[recipe.result].name} (used ${ITEMS[fuel].name} as fuel).`;
   state.menuFlashUntil = performance.now() + 1600;
 }
 

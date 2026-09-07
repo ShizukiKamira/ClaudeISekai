@@ -21,14 +21,29 @@ function tickHungerThirst(state) {
   }
 }
 
+// With an Empty Flask on hand, interacting with water fills it with Dirty
+// Water instead of drinking straight from the lake - the flask-refill flow
+// the empty flask left behind by a drunk Potion exists for.
 function handleDrinkWater(state) {
   const p = state.player;
+  if (hasItem(state, "empty_flask")) {
+    fillFlaskWithDirtyWater(state);
+    return;
+  }
   if (p.thirst >= THIRST_MAX) {
     Dialogue.show(["You're not thirsty right now."]);
     return;
   }
   p.thirst = THIRST_MAX;
   Dialogue.show(["You cup your hands and drink from the water. Thirst restored."]);
+}
+
+function fillFlaskWithDirtyWater(state) {
+  const entry = state.player.inventory.find((i) => i.item === "empty_flask");
+  entry.qty -= 1;
+  if (entry.qty <= 0) state.player.inventory = state.player.inventory.filter((i) => i.qty > 0);
+  addItem(state, "dirty_water", 1);
+  Dialogue.show(["You fill the flask with murky water from the lake."]);
 }
 
 // ---------------------------------------------------------------------------
@@ -92,8 +107,8 @@ function tryRabbitSpawn(state) {
   spawnRabbit(state, spot.x, spot.y);
 }
 
-// Rabbits never chase or flee the player - they just wander, same cadence
-// as an unaware field monster - and get removed only by a loaded trap.
+// When no player is nearby, a rabbit just wanders, same cadence as an
+// unaware field monster.
 function wanderAnimal(state, animal) {
   if (Math.random() >= 0.5) return;
   const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
@@ -106,6 +121,52 @@ function wanderAnimal(state, animal) {
     animal.moving = true;
     animal.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
   }
+}
+
+// A rabbit within RABBIT_NOTICE_RADIUS of the player flees away from it
+// instead of wandering - the mirror image of stepMonsterToward. It never
+// fights back, so the only ways to end up with meat are a loaded trap or
+// catching up to land a direct hit.
+function fleeFromPlayer(state, animal) {
+  const p = state.player;
+  const dx = Math.sign(animal.tileX - p.tileX) || (Math.random() < 0.5 ? 1 : -1);
+  const dy = Math.sign(animal.tileY - p.tileY) || (Math.random() < 0.5 ? 1 : -1);
+  const candidates = [];
+  if (dx !== 0) candidates.push([dx, 0]);
+  if (dy !== 0) candidates.push([0, dy]);
+  if (dy === 0 && dx !== 0) candidates.push([dx, 1], [dx, -1]);
+  if (dx === 0 && dy !== 0) candidates.push([1, dy], [-1, dy]);
+
+  for (const [mx, my] of candidates) {
+    const nx = animal.tileX + mx;
+    const ny = animal.tileY + my;
+    if (isTileFreeForAnimal(state, nx, ny)) {
+      animal.tileX = nx;
+      animal.tileY = ny;
+      animal.moving = true;
+      animal.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
+      return;
+    }
+  }
+}
+
+function stepRabbit(state, animal) {
+  const p = state.player;
+  const dist = chebyshevDist(animal.tileX, animal.tileY, p.tileX, p.tileY);
+  if (dist <= RABBIT_NOTICE_RADIUS) {
+    fleeFromPlayer(state, animal);
+  } else {
+    wanderAnimal(state, animal);
+  }
+}
+
+// A melee swing that lands on a rabbit hunts it down outright - the direct
+// alternative to waiting on a loaded trap.
+function killRabbit(state, animal) {
+  state.animals = state.animals.filter((a) => a !== animal);
+  addItem(state, "rabbit_meat", 1);
+  state.worldFlashMessage = "You hunted a rabbit! +1 Rabbit Meat";
+  state.worldFlashUntil = performance.now() + 1400;
 }
 
 // A trap catches any rabbit currently adjacent to it with a flat per-tick
@@ -126,7 +187,8 @@ function updateTraps(state) {
 
 function updateAnimalsTurn(state) {
   for (const animal of state.animals) {
-    wanderAnimal(state, animal);
+    if (animal.kind === "rabbit") stepRabbit(state, animal);
+    else wanderAnimal(state, animal);
   }
   updateTraps(state);
   tryRabbitSpawn(state);

@@ -31,13 +31,51 @@ function applyItemEffect(state, itemId) {
   } else if (data.restoreMp) {
     p.mp = Math.min(p.maxMp, p.mp + data.restoreMp);
     message = `You use a ${data.name} and recover ${data.restoreMp} MP.`;
-  } else if (data.restoreHunger) {
+  } else if (data.restoreHunger && !data.restoreThirst) {
     p.hunger = Math.min(HUNGER_MAX, p.hunger + data.restoreHunger);
     message = `You eat the ${data.name} and recover ${data.restoreHunger} Hunger.`;
+  } else if (data.restoreThirst) {
+    p.thirst = Math.min(THIRST_MAX, p.thirst + data.restoreThirst);
+    if (data.restoreHunger) p.hunger = Math.min(HUNGER_MAX, p.hunger + data.restoreHunger);
+    message = data.restoreHunger
+      ? `You eat the ${data.name} and recover ${data.restoreHunger} Hunger and ${data.restoreThirst} Thirst.`
+      : `You drink the ${data.name} and recover ${data.restoreThirst} Thirst.`;
+    if (data.poisonChance && Math.random() < data.poisonChance) {
+      applyPoison(state);
+      message += " It tasted foul - you feel sick!";
+    }
   }
   entry.qty -= 1;
   if (entry.qty <= 0) p.inventory = p.inventory.filter((i) => i.qty > 0);
+  if (data.leavesFlask) addItem(state, "empty_flask", 1);
   return message;
+}
+
+// Poisoning: a chance from drinking Dirty Water. Deals POISON_DAMAGE_PER_TICK
+// once a second while active, but never pushes HP below POISON_HP_FLOOR (and
+// does nothing at all once HP is already at or under that floor).
+function applyPoison(state) {
+  const p = state.player;
+  p.poisonedUntil = performance.now() + POISON_DURATION_MS;
+}
+
+function updatePoisoning(state) {
+  const p = state.player;
+  if (!p.poisonedUntil) return;
+  const now = performance.now();
+  if (now >= p.poisonedUntil) {
+    p.poisonedUntil = 0;
+    return;
+  }
+  if (now - p.lastPoisonDamageAt < POISON_TICK_MS) return;
+  p.lastPoisonDamageAt = now;
+  if (p.hp > POISON_HP_FLOOR) {
+    const dmg = Math.min(POISON_DAMAGE_PER_TICK, p.hp - POISON_HP_FLOOR);
+    p.hp -= dmg;
+    state.worldFlashMessage = `Poison courses through you! -${dmg} HP`;
+    state.worldFlashUntil = now + 900;
+    if (p.hp <= 0) state.mode = "GAMEOVER";
+  }
 }
 
 // The tile directly ahead of the player, plus the tile on either side of
@@ -90,7 +128,49 @@ function tryPlayerAttack(state) {
     damageMonster(state, m, dmg);
   }
 
+  // Rabbits are harmless and never fight back - a swing that lands on one
+  // hunts it down outright, same yield as checking a loaded trap.
+  const rabbitHits = state.animals.filter((a) => a.kind === "rabbit" && tiles.some((t) => t.x === a.tileX && t.y === a.tileY));
+  for (const a of rabbitHits) {
+    killRabbit(state, a);
+  }
+
   advanceTurnForAction(state);
+}
+
+// Dispatches a hotbar slot press/click to whichever it holds: the class's
+// assigned active skill, or a dragged-on consumable (with its own per-slot
+// cooldown, independent of the global attack cooldown).
+function activateHotbarSlot(state, slotIndex) {
+  const p = state.player;
+  const val = p.hotbar[slotIndex];
+  if (!val) return;
+  const skill = CLASS_SKILLS[p.class];
+  if (skill && skill.id === val && skill.type === "active") {
+    castHotbarSkill(state, slotIndex);
+  } else if (ITEMS[val] && ITEMS[val].type === "consumable") {
+    useHotbarItem(state, slotIndex);
+  }
+}
+
+function useHotbarItem(state, slotIndex) {
+  const p = state.player;
+  const itemId = p.hotbar[slotIndex];
+  const data = ITEMS[itemId];
+  if (!data || data.type !== "consumable") return;
+  const now = performance.now();
+  if (now < (p.hotbarCooldownUntil[slotIndex] || 0)) return;
+  if (!hasItem(state, itemId)) {
+    state.worldFlashMessage = `Out of ${data.name}.`;
+    state.worldFlashUntil = now + 1000;
+    return;
+  }
+  const message = applyItemEffect(state, itemId);
+  p.hotbarCooldownUntil[slotIndex] = now + HOTBAR_ITEM_COOLDOWN_MS;
+  if (message) {
+    state.worldFlashMessage = message;
+    state.worldFlashUntil = now + 1400;
+  }
 }
 
 // Casts the active skill assigned to a hotbar slot (1-9). Passive skills

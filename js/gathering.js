@@ -81,6 +81,21 @@ function handleGatherMoonleaf(state, x, y) {
   Dialogue.show(["You gather a pale leaf of Moonleaf."]);
 }
 
+// Bushes always yield 1-2 random drops from FORAGE_LOOT_TABLE, then clear
+// like a Healing Herb or Moonleaf patch. Reachable via the facing+Enter
+// interact chain, or by clicking the "Forage" popup drawn near the player.
+function handleForage(state, x, y) {
+  state.map[y][x] = TILE.GRASS;
+  const rolls = 1 + Math.floor(Math.random() * 2); // 1-2
+  const gained = [];
+  for (let i = 0; i < rolls; i++) {
+    const itemId = FORAGE_LOOT_TABLE[Math.floor(Math.random() * FORAGE_LOOT_TABLE.length)];
+    addItem(state, itemId, 1);
+    gained.push(ITEMS[itemId].name);
+  }
+  Dialogue.show([`You forage the bush and find: ${gained.join(", ")}.`]);
+}
+
 function handleBedInteract(state) {
   if (isNightTime(state.turnCount)) {
     Dialogue.show(["You climb into the warm bed.", "Sleep comes quickly..."], {

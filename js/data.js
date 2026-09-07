@@ -24,9 +24,10 @@ const TILE = {
   DOOR: 12,
   FLOOR: 13,
   RUG: 14,
+  BUSH: 15,
 };
 
-const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK, TILE.WALL, TILE.ROOF]);
+const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK, TILE.WALL, TILE.ROOF, TILE.BUSH]);
 
 // Deterministic PRNG (mulberry32) so the procedurally-scattered map is
 // identical on every load while still looking hand-varied.
@@ -117,6 +118,12 @@ function buildMap() {
   // Moonleaf - a rarer gatherable used in stronger alchemy
   for (let i = 0; i < 12; i++) {
     grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.MOONLEAF;
+  }
+
+  // Forageable bushes - a solid obstacle (like a tree) offering a clickable
+  // "Forage" popup for sticks, stones, herbs, and berries
+  for (let i = 0; i < 22; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.BUSH;
   }
 
   // Path from the player's landing spot to the shrine clearing
@@ -277,7 +284,15 @@ const ITEM_PICKUPS = [
 ];
 
 const ITEMS = {
-  potion: { name: "Potion", desc: "Restores 30 HP.", type: "consumable", category: "items", heal: 30, value: 15 },
+  potion: {
+    name: "Potion",
+    desc: "Restores 30 HP. Leaves behind an Empty Flask you can refill with water.",
+    type: "consumable",
+    category: "items",
+    heal: 30,
+    value: 15,
+    leavesFlask: true,
+  },
   hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", category: "items", heal: 80, value: 45 },
   ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", category: "items", restoreMp: 20, value: 20 },
   gold: { name: "Gold", desc: "Currency of no world in particular.", type: "currency", category: "misc" },
@@ -531,6 +546,39 @@ const ITEMS = {
     type: "placeable",
     category: "misc",
     value: 20,
+  },
+  berry: {
+    name: "Berries",
+    desc: "A handful of wild berries. Restores 10 Hunger and 5 Thirst.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 10,
+    restoreThirst: 5,
+    value: 5,
+  },
+  empty_flask: {
+    name: "Empty Flask",
+    desc: "A glass flask, empty after you drank the potion inside. Face a lake or pond and interact to fill it with water.",
+    type: "tool",
+    category: "misc",
+    value: 3,
+  },
+  dirty_water: {
+    name: "Dirty Water",
+    desc: "Unfiltered water scooped from a lake. Restores 30 Thirst, but has a chance of poisoning you.",
+    type: "consumable",
+    category: "items",
+    restoreThirst: 30,
+    poisonChance: 0.3,
+    value: 4,
+  },
+  purified_water: {
+    name: "Purified Water",
+    desc: "Water boiled clean over a furnace. Restores 50 Thirst with no risk.",
+    type: "consumable",
+    category: "items",
+    restoreThirst: 50,
+    value: 10,
   },
 };
 
@@ -857,6 +905,24 @@ const OUT_OF_COMBAT_TILE_THRESHOLD = 5; // tiles walked before regen kicks in
 const HP_REGEN_PER_TILE = 3;
 const MP_REGEN_PER_TILE = 1;
 const HOTBAR_SIZE = 9;
+const HOTBAR_ITEM_COOLDOWN_MS = 10000; // per-slot cooldown for a dragged-on consumable
+
+// ---------------------------------------------------------------------------
+// Placement: choosing where to put a crafted item with the mouse, within a
+// short range of the player rather than only the tile directly ahead.
+// ---------------------------------------------------------------------------
+
+const PLACEMENT_RANGE = 2; // tiles, Chebyshev distance from the player
+
+// ---------------------------------------------------------------------------
+// Poisoning: a chance from drinking Dirty Water. Ticks HP damage once a
+// second while active, but never pushes HP below the floor.
+// ---------------------------------------------------------------------------
+
+const POISON_DURATION_MS = 5000;
+const POISON_TICK_MS = 1000;
+const POISON_DAMAGE_PER_TICK = 5;
+const POISON_HP_FLOOR = 10;
 
 // ---------------------------------------------------------------------------
 // Survival: hunger/thirst drain slowly as the player walks, restored by
@@ -879,6 +945,14 @@ const RABBIT_LIMIT = 2;
 const RABBIT_SPAWN_CHANCE = 0.08;
 const RABBIT_MOVE_SPEED = 110; // px/s
 const TRAP_CATCH_CHANCE = 0.2; // per monster-turn tick, while a rabbit is adjacent to an unloaded trap
+const RABBIT_NOTICE_RADIUS = 3; // tiles - a rabbit within this of the player flees instead of wandering
+
+// ---------------------------------------------------------------------------
+// Foraging: bushes offer a clickable "Forage" popup for a small random
+// assortment of sticks, stones, herbs, and berries.
+// ---------------------------------------------------------------------------
+
+const FORAGE_LOOT_TABLE = ["stick", "stone", "healing_herb", "berry"];
 
 // ---------------------------------------------------------------------------
 // Fishing: cast at a facing water tile with a Fishing Rod, wait for a bite,

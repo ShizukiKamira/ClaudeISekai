@@ -17,6 +17,7 @@ function createInitialState() {
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
     placingItem: null,
+    placeHoverTile: null,
     player: createPlayer(),
     flags: { metFox: false, bossDefeated: false },
     turnCount: 0,
@@ -320,6 +321,8 @@ function updateOverworld(dt) {
 
   updateProjectiles(state, dt);
   updateMonsterCombat(state, dt);
+  updatePoisoning(state);
+  if (state.mode === "GAMEOVER") return;
 
   if (Input.menuPressed()) {
     state.mode = "MENU";
@@ -334,13 +337,23 @@ function updateOverworld(dt) {
   }
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     if (Input.wasPressed(`Digit${i + 1}`)) {
-      castHotbarSkill(state, i);
+      activateHotbarSlot(state, i);
     }
   }
   if (Input.clickPos) {
     const hit = (state.uiHitboxes.hotbar || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
     if (hit) {
-      castHotbarSkill(state, hit.idx);
+      activateHotbarSlot(state, hit.idx);
+      Input.clickPos = null;
+    }
+  }
+
+  // The "Forage" popup near a bush takes priority over the world-click
+  // combat/gathering dispatch below, so a click on it never also swings.
+  if (Input.clickPos) {
+    const forageHit = (state.uiHitboxes.forageButtons || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (forageHit) {
+      handleForage(state, forageHit.tileX, forageHit.tileY);
       Input.clickPos = null;
     }
   }
@@ -403,6 +416,8 @@ function updateOverworld(dt) {
         handleGatherHerb(state, target.x, target.y);
       } else if (tile === TILE.MOONLEAF) {
         handleGatherMoonleaf(state, target.x, target.y);
+      } else if (tile === TILE.BUSH) {
+        handleForage(state, target.x, target.y);
       } else if (tile === TILE.WATER) {
         handleDrinkWater(state);
       }
@@ -480,16 +495,28 @@ function enterOrExitHome(state) {
   }
 }
 
+// The target tile follows the mouse cursor (rather than only the tile the
+// player is facing), clamped to within PLACEMENT_RANGE tiles of the player -
+// state.placeHoverTile is read back by renderMap for the ghost preview.
 function updatePlacing(dt) {
   tryMovePlayer(state, dt);
   if (Input.cancelPressed()) {
     state.placingItem = null;
+    state.placeHoverTile = null;
     return;
   }
-  if (Input.confirmPressed() && !state.player.moving) {
-    const target = facingTile(state.player);
-    if (canPlaceItemAt(state, state.placingItem, target.x, target.y)) {
-      const placed = { type: state.placingItem, x: target.x, y: target.y };
+
+  const hover = screenToTile(Input.mousePos);
+  state.placeHoverTile = hover;
+  const inRange = chebyshevDist(hover.x, hover.y, state.player.tileX, state.player.tileY) <= PLACEMENT_RANGE;
+
+  const wantsConfirm = Input.confirmPressed() || !!Input.clickPos;
+  if (wantsConfirm) {
+    if (!inRange) {
+      state.worldFlashMessage = "Too far away to place it there.";
+      state.worldFlashUntil = performance.now() + 1200;
+    } else if (canPlaceItemAt(state, state.placingItem, hover.x, hover.y)) {
+      const placed = { type: state.placingItem, x: hover.x, y: hover.y };
       if (state.placingItem === "chest") placed.contents = [];
       state.placedObjects.push(placed);
       const entry = state.player.inventory.find((i) => i.item === state.placingItem);
@@ -498,10 +525,12 @@ function updatePlacing(dt) {
         if (entry.qty <= 0) state.player.inventory = state.player.inventory.filter((i) => i.qty > 0);
       }
       state.placingItem = null;
+      state.placeHoverTile = null;
     } else {
       state.worldFlashMessage = "Can't place it there.";
       state.worldFlashUntil = performance.now() + 1200;
     }
+    Input.clickPos = null;
   }
 }
 
@@ -745,6 +774,11 @@ function renderHud() {
     ctx.font = "bold 12px 'Segoe UI', sans-serif";
     ctx.fillText("Crouching (C)", canvas.width - 130, 38);
   }
+  if (p.poisonedUntil && performance.now() < p.poisonedUntil) {
+    ctx.fillStyle = "#8e6fce";
+    ctx.font = "bold 12px 'Segoe UI', sans-serif";
+    ctx.fillText("Poisoned", canvas.width - 130, p.crouching ? 54 : 38);
+  }
 
   const night = isNightTime(state.turnCount);
   ctx.fillStyle = night ? "#c9d6f0" : "#f6d97a";
@@ -770,7 +804,7 @@ function renderHud() {
     ctx.font = "bold 13px 'Segoe UI', sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(
-      `Placing ${ITEMS[state.placingItem].name} - Enter to place, Esc to cancel`,
+      `Placing ${ITEMS[state.placingItem].name} - click (within ${PLACEMENT_RANGE} tiles) or Enter to place, Esc to cancel`,
       canvas.width / 2,
       canvas.height - 10
     );

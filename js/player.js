@@ -35,6 +35,9 @@ function createPlayer() {
     thirst: THIRST_MAX,
     tilesOutOfCombat: 0,
     hotbar: new Array(HOTBAR_SIZE).fill(null),
+    hotbarCooldownUntil: new Array(HOTBAR_SIZE).fill(0),
+    poisonedUntil: 0,
+    lastPoisonDamageAt: 0,
     hpFloatText: null,
     mpFloatText: null,
   };

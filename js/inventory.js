@@ -13,6 +13,7 @@ function getFilteredInventory(state, categoryId) {
 }
 
 function updateInventoryTab(state) {
+  const p = state.player;
   if (Input.wasPressed("BracketLeft")) {
     state.menuFilterIndex = (state.menuFilterIndex - 1 + ITEM_CATEGORIES.length) % ITEM_CATEGORIES.length;
     state.menuCursor = 0;
@@ -31,6 +32,30 @@ function updateInventoryTab(state) {
   }
 
   const items = getFilteredInventory(state, currentCategory(state));
+
+  // Hotbar: drag a consumable from the grid onto a slot to assign it there
+  // (pressing/clicking that slot in the overworld then uses it, with its own
+  // cooldown); a plain click on an already-assigned slot removes it. This
+  // runs before the empty-category early-return so removal still works even
+  // while browsing a category with nothing in it.
+  if (Input.mouseUpPos && Input.mouseDownPos) {
+    const downSlot = (state.uiHitboxes.invSlots || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
+    const upHotbarSlot = (state.uiHitboxes.invHotbarSlots || []).find((b) => pointInRect(Input.mouseUpPos.x, Input.mouseUpPos.y, b));
+    if (downSlot && upHotbarSlot) {
+      const itemId = items[downSlot.idx] ? items[downSlot.idx].item : null;
+      if (itemId && ITEMS[itemId].type === "consumable") {
+        p.hotbar[upHotbarSlot.idx] = itemId;
+      }
+    } else {
+      const downHotbarSlot = (state.uiHitboxes.invHotbarSlots || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
+      if (downHotbarSlot && upHotbarSlot && downHotbarSlot.idx === upHotbarSlot.idx) {
+        const cur = p.hotbar[downHotbarSlot.idx];
+        if (cur && ITEMS[cur] && ITEMS[cur].type === "consumable") p.hotbar[downHotbarSlot.idx] = null;
+      }
+    }
+    Input.mouseDownPos = null;
+  }
+
   if (items.length === 0) return;
   state.menuCursor = Math.min(state.menuCursor, items.length - 1);
 
@@ -770,6 +795,31 @@ function drawFishIcon(ctx, cx, cy, s, color) {
   ctx.stroke();
 }
 
+function drawBerryIcon(ctx, cx, cy, s) {
+  ctx.strokeStyle = "#3a5c2a";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.4);
+  ctx.lineTo(cx, cy - s * 0.18);
+  ctx.stroke();
+  ctx.fillStyle = "#4d9a4d";
+  ctx.beginPath();
+  ctx.ellipse(cx - s * 0.14, cy - s * 0.28, s * 0.12, s * 0.07, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  const berryColors = ["#8e3f6e", "#a8524f", "#7a2a6a"];
+  const spots = [[-0.14, 0.02], [0.12, -0.04], [0, 0.24], [-0.05, 0.26]];
+  spots.forEach(([dx, dy], i) => {
+    ctx.fillStyle = berryColors[i % berryColors.length];
+    ctx.beginPath();
+    ctx.arc(cx + s * dx, cy + s * dy, s * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.25)";
+    ctx.beginPath();
+    ctx.arc(cx + s * dx - s * 0.04, cy + s * dy - s * 0.04, s * 0.04, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -905,6 +955,18 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "fish_golden":
       drawFishIcon(ctx, cx, cy, s * 0.9, "#e8c97a");
+      break;
+    case "berry":
+      drawBerryIcon(ctx, cx, cy, s);
+      break;
+    case "empty_flask":
+      drawFlaskIcon(ctx, cx, cy, s, "rgba(255,255,255,0.1)");
+      break;
+    case "dirty_water":
+      drawFlaskIcon(ctx, cx, cy, s, "#6b5a3a");
+      break;
+    case "purified_water":
+      drawFlaskIcon(ctx, cx, cy, s, "#bfe0f0");
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);
@@ -1052,8 +1114,9 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
   });
   ctx.textAlign = "left";
 
+  const hotbarAreaH = 54; // label + one row of hotbar slots, reserved below the grid
   const gridY = y + catH + 14;
-  const gridH = h - catH - 14 - 28;
+  const gridH = h - catH - 14 - 28 - hotbarAreaH;
 
   const items = getFilteredInventory(state, currentCategory(state));
   const slotSize = 54;
@@ -1080,6 +1143,12 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
     ctx.fillText("(nothing in this category yet)", x + gridW / 2, gridY + (rows * (slotSize + slotGap)) / 2);
     ctx.textAlign = "left";
   }
+
+  const hotbarLabelY = gridY + rows * (slotSize + slotGap) + 14;
+  ctx.fillStyle = "#8a9a8a";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.fillText("Hotbar - drag a potion here to assign 1-9 (click an assigned slot to remove):", x, hotbarLabelY);
+  renderHotbarRow(ctx, state, x, hotbarLabelY + 8, 30, "invHotbarSlots");
 
   const descY = y + h - 6;
   const selected = items[state.menuCursor];
