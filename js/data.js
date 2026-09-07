@@ -525,6 +525,13 @@ const ITEMS = {
     // 2000 to land on the requested 1000-gold sell price.
     value: 2000,
   },
+  chest: {
+    name: "Chest",
+    desc: "A sturdy wooden chest. Select it here to place it, then press Enter to store and retrieve items.",
+    type: "placeable",
+    category: "misc",
+    value: 20,
+  },
 };
 
 const CRAFTING_RECIPES = [
@@ -663,12 +670,21 @@ const CRAFTING_RECIPES = [
       { item: "flint", qty: 1 },
     ],
   },
+  {
+    id: "chest_crafted",
+    name: "Chest",
+    result: "chest",
+    resultQty: 1,
+    ingredients: [
+      { item: "log", qty: 2 },
+    ],
+  },
 ];
 
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
   "stick", "flint", "log", "stone", "iron_ore", "copper_ore", "axe", "pickaxe", "bridge",
-  "furnace", "iron_ingot", "copper_ingot", "crafting_table", "basic_trap", "fishing_rod",
+  "furnace", "iron_ingot", "copper_ingot", "crafting_table", "basic_trap", "fishing_rod", "chest",
 ];
 
 const ITEM_CATEGORIES = [

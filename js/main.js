@@ -33,6 +33,12 @@ function createInitialState() {
     exteriorSnapshot: null, // set while indoors: { map, npcs, monsters, itemPickups, placedObjects, returnX, returnY, returnDir }
     resourceHits: {}, // "x,y" -> hit count so far, for trees/boulders mid-chop/mine
     fishing: { active: false },
+    chestTarget: null, // { x, y } of the placedObject currently open
+    chestSelected: null, // { side, idx } highlighted slot
+    chestLastClick: null, // { side, idx, at } for double-click detection
+    chestPrompt: null, // { side, itemId, maxQty, customInput } while the amount prompt is open
+    chestInvScroll: 0,
+    chestBoxScroll: 0,
     shop: { mode: "buy", filterIndex: 0, cursor: 0 },
     shopFlashMessage: "",
     shopFlashUntil: 0,
@@ -119,6 +125,37 @@ canvas.addEventListener("wheel", (e) => {
   Input.wheelDelta += e.deltaY;
 }, { passive: false });
 
+function canvasEventPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+// Right-click and drag support (used by the chest storage UI): the browser's
+// own context menu is suppressed on the canvas so a right-click can drive
+// the take/store-amount prompt instead.
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+canvas.addEventListener("mousedown", (e) => {
+  if (e.button === 2) {
+    Input.rightClickPos = canvasEventPos(e);
+  } else if (e.button === 0) {
+    Input.mouseDownPos = canvasEventPos(e);
+  }
+});
+
+canvas.addEventListener("mouseup", (e) => {
+  if (e.button === 0) {
+    Input.mouseUpPos = canvasEventPos(e);
+  }
+});
+
+canvas.addEventListener("mousemove", (e) => {
+  Input.mousePos = canvasEventPos(e);
+});
+
 function pointInRect(px, py, box) {
   return px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
 }
@@ -190,6 +227,9 @@ function update(dt) {
       break;
     case "FURNACE":
       updateFurnaceUI(state);
+      break;
+    case "CHEST":
+      updateChest(state);
       break;
     case "GAMEOVER":
       if (Input.confirmPressed()) {
@@ -343,6 +383,14 @@ function updateOverworld(dt) {
       handleBedInteract(state);
     } else if (placedAtTarget && placedAtTarget.type === "basic_trap") {
       handleTrapInteract(state, placedAtTarget);
+    } else if (placedAtTarget && placedAtTarget.type === "chest" && placedAtTarget.contents) {
+      state.mode = "CHEST";
+      state.chestTarget = { x: placedAtTarget.x, y: placedAtTarget.y };
+      state.chestSelected = null;
+      state.chestLastClick = null;
+      state.chestPrompt = null;
+      state.chestInvScroll = 0;
+      state.chestBoxScroll = 0;
     } else if (placedAtTarget && HOME_FLAVOR_TEXT[placedAtTarget.type]) {
       Dialogue.show([HOME_FLAVOR_TEXT[placedAtTarget.type]]);
     } else {
@@ -441,7 +489,9 @@ function updatePlacing(dt) {
   if (Input.confirmPressed() && !state.player.moving) {
     const target = facingTile(state.player);
     if (canPlaceItemAt(state, state.placingItem, target.x, target.y)) {
-      state.placedObjects.push({ type: state.placingItem, x: target.x, y: target.y });
+      const placed = { type: state.placingItem, x: target.x, y: target.y };
+      if (state.placingItem === "chest") placed.contents = [];
+      state.placedObjects.push(placed);
       const entry = state.player.inventory.find((i) => i.item === state.placingItem);
       if (entry) {
         entry.qty -= 1;
@@ -537,6 +587,15 @@ function render() {
       ctx.restore();
       renderNightOverlay(state);
       renderFurnaceUI(ctx, state, canvas.width, canvas.height);
+      break;
+    case "CHEST":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
+      renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
+      renderChest(ctx, state, canvas.width, canvas.height);
       break;
     case "GAMEOVER":
       renderEndScreen("You Perished", GAMEOVER_TEXT, "#3d1414", "#c94f4f");

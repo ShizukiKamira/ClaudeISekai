@@ -353,6 +353,8 @@ function renderMap(ctx, state) {
       if (isNearPlayer(state, obj.x, obj.y)) {
         drawInteractPrompt(ctx, obj.x, obj.y, obj.loaded ? "Enter: collect catch" : "Enter: check trap");
       }
+    } else if (obj.type === "chest" && obj.contents && isNearPlayer(state, obj.x, obj.y)) {
+      drawInteractPrompt(ctx, obj.x, obj.y, "Enter: open chest");
     }
   }
 

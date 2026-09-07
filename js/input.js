@@ -8,6 +8,10 @@ const Input = {
   heldSince: new Map(), // code -> timestamp the key was first pressed down
   clickPos: null, // {x, y} in canvas pixel space for a click this frame, cleared after the frame
   wheelDelta: 0, // accumulated mouse-wheel deltaY this frame, cleared after the frame
+  rightClickPos: null, // {x, y} for a right-click (context menu) this frame, cleared after the frame
+  mouseDownPos: null, // {x, y} set on left-mouse-down this frame, cleared after the frame
+  mouseUpPos: null, // {x, y} set on left-mouse-up this frame, cleared after the frame
+  mousePos: { x: 400, y: 300 }, // continuously-updated cursor position, never cleared
 
   init() {
     window.addEventListener("keydown", (e) => {
@@ -38,6 +42,11 @@ const Input = {
     this.pressed.clear();
     this.clickPos = null;
     this.wheelDelta = 0;
+    this.rightClickPos = null;
+    this.mouseUpPos = null;
+    // mouseDownPos is intentionally NOT cleared here - a drag can span many
+    // frames between mousedown and mouseup, so it persists until whoever
+    // pairs it with a mouseUpPos (e.g. chest.js's drag handling) clears it.
   },
 
   moveDirection() {
