@@ -166,6 +166,10 @@ function onPlayerArrivedTile(state) {
     triggerShrineEvent(state);
     return;
   }
+  if (tile === TILE.DOOR) {
+    enterOrExitHome(state);
+    return;
+  }
   checkItemPickup(state);
 
   updateMonstersTurn(state);

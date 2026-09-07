@@ -136,6 +136,135 @@ function drawShrineTile(ctx, px, py, tx, ty) {
   ctx.fillRect(px + 4 * u, py + 4 * u, 2 * u, 2 * u);
 }
 
+function drawHerbTile(ctx, px, py, tx, ty) {
+  drawGrassTile(ctx, px, py, tx, ty);
+  const u = PX_UNIT;
+  ctx.fillStyle = "#2f6b32";
+  ctx.fillRect(px + 3 * u, py + 4 * u, u, 3 * u);
+  ctx.fillRect(px + 5 * u, py + 3 * u, u, 4 * u);
+  ctx.fillStyle = "#4d9a4d";
+  ctx.fillRect(px + 2 * u, py + 3 * u, u, 2 * u);
+  ctx.fillRect(px + 4 * u, py + 2 * u, u, 2 * u);
+  ctx.fillRect(px + 6 * u, py + 3 * u, u, 2 * u);
+  ctx.fillStyle = "#c9534f";
+  ctx.fillRect(px + 3 * u, py + 4 * u, u, u);
+  ctx.fillRect(px + 5 * u, py + 5 * u, u, u);
+}
+
+function drawMoonleafTile(ctx, px, py, tx, ty) {
+  drawGrassTile(ctx, px, py, tx, ty);
+  const u = PX_UNIT;
+  const glow = 0.55 + Math.sin(performance.now() / 500 + tx * 0.7 + ty * 0.3) * 0.2;
+  ctx.fillStyle = "#3a5c4a";
+  ctx.fillRect(px + 4 * u, py + 5 * u, u, 3 * u);
+  ctx.save();
+  ctx.globalAlpha = glow;
+  ctx.fillStyle = "#cfe8e0";
+  ctx.fillRect(px + 2 * u, py + 3 * u, 2 * u, 2 * u);
+  ctx.fillRect(px + 5 * u, py + 2 * u, 2 * u, 2 * u);
+  ctx.fillRect(px + 3 * u, py + 5 * u, 2 * u, 2 * u);
+  ctx.restore();
+  ctx.fillStyle = "#eaf6f2";
+  ctx.fillRect(px + 4 * u, py + 4 * u, u, u);
+}
+
+function drawRoofTile(ctx, px, py, tx, ty) {
+  ctx.fillStyle = "#7a3a2a";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  const u = PX_UNIT;
+  for (let row = 0; row < 5; row++) {
+    ctx.fillStyle = row % 2 === 0 ? "#8a4632" : "#6b2f22";
+    ctx.fillRect(px, py + row * 2 * u, TILE_SIZE, u);
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(px, py, TILE_SIZE, u);
+}
+
+function drawWallTile(ctx, px, py, tx, ty) {
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  const u = PX_UNIT;
+  for (let row = 0; row < 5; row++) {
+    ctx.fillStyle = row % 2 === 0 ? "#7a5636" : "#5c4326";
+    ctx.fillRect(px, py + row * 2 * u, TILE_SIZE, 2 * u);
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fillRect(px, py + row * 2 * u + 2 * u - 1, TILE_SIZE, 1);
+  }
+  // Roughly every third wall tile gets a small shuttered window for detail.
+  if (pixelHash(tx, ty, 200) < 0.3) {
+    ctx.fillStyle = "#2a3a3f";
+    ctx.fillRect(px + 3 * u, py + 3 * u, 4 * u, 3 * u);
+    ctx.fillStyle = "#4a6a72";
+    ctx.fillRect(px + 3 * u, py + 3 * u, 4 * u, u);
+    ctx.strokeStyle = "#3a2a1a";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(px + 3 * u + 0.5, py + 3 * u + 0.5, 4 * u - 1, 3 * u - 1);
+  }
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+}
+
+function drawDoorTile(ctx, px, py, tx, ty) {
+  ctx.fillStyle = "#3a2a1a";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  const u = PX_UNIT;
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(px + u, py + u, 8 * u, 9 * u);
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(px + 2 * u, py + 2 * u, 3 * u, 3 * u);
+  ctx.fillRect(px + 5 * u, py + 2 * u, 3 * u, 3 * u);
+  ctx.fillRect(px + 2 * u, py + 6 * u, 3 * u, 3 * u);
+  ctx.fillRect(px + 5 * u, py + 6 * u, 3 * u, 3 * u);
+  ctx.fillStyle = "#e8c97a";
+  ctx.fillRect(px + 7 * u, py + 5 * u, u, u);
+  ctx.strokeStyle = "#2a1a0f";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + u + 0.5, py + u + 0.5, 8 * u - 1, 9 * u - 1);
+}
+
+function drawFloorTile(ctx, px, py, tx, ty) {
+  ctx.fillStyle = "#7a5c3e";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  const u = PX_UNIT;
+  const plank = (tx + ty) % 2 === 0;
+  ctx.fillStyle = plank ? "#835f3f" : "#6f5236";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  ctx.strokeStyle = "rgba(0,0,0,0.2)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(px, py + i * (TILE_SIZE / 4));
+    ctx.lineTo(px + TILE_SIZE, py + i * (TILE_SIZE / 4));
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(0,0,0,0.12)";
+  ctx.beginPath();
+  ctx.moveTo(px + TILE_SIZE / 2, py);
+  ctx.lineTo(px + TILE_SIZE / 2, py + TILE_SIZE);
+  ctx.stroke();
+  for (let i = 0; i < 3; i++) {
+    const kx = px + Math.floor(pixelHash(tx, ty, i * 4) * 8) * u;
+    const ky = py + Math.floor(pixelHash(tx, ty, i * 4 + 1) * 8) * u;
+    ctx.fillStyle = "rgba(0,0,0,0.15)";
+    ctx.fillRect(kx, ky, u, u);
+  }
+}
+
+function drawRugTile(ctx, px, py, tx, ty) {
+  drawFloorTile(ctx, px, py, tx, ty);
+  const u = PX_UNIT;
+  ctx.fillStyle = "#8e3f3f";
+  ctx.fillRect(px + u, py + u, 8 * u, 8 * u);
+  ctx.fillStyle = "#a8524f";
+  ctx.fillRect(px + 2 * u, py + 2 * u, 6 * u, 6 * u);
+  ctx.fillStyle = "#c97a4a";
+  ctx.strokeStyle = "#e8c97a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 2.5 * u, py + 2.5 * u, 5 * u, 5 * u);
+  ctx.fillRect(px + 4 * u, py + 4 * u, 2 * u, 2 * u);
+}
+
 const TILE_DRAWERS = {
   [TILE.GRASS]: drawGrassTile,
   [TILE.TREE]: drawTreeTile,
@@ -145,6 +274,13 @@ const TILE_DRAWERS = {
   [TILE.SHRINE]: drawShrineTile,
   [TILE.ROCK]: drawRockTile,
   [TILE.FLOWER]: drawFlowerTile,
+  [TILE.HERB]: drawHerbTile,
+  [TILE.MOONLEAF]: drawMoonleafTile,
+  [TILE.ROOF]: drawRoofTile,
+  [TILE.WALL]: drawWallTile,
+  [TILE.DOOR]: drawDoorTile,
+  [TILE.FLOOR]: drawFloorTile,
+  [TILE.RUG]: drawRugTile,
 };
 
 // Pixel-fantasy corner brackets, dropped onto any UI panel rect to give it a
@@ -207,6 +343,14 @@ function renderMap(ctx, state) {
         drawInteractPrompt(ctx, obj.x, obj.y, "Enter: open recipes");
       }
     }
+  }
+
+  // Door label - persistent, like the crafting table's, so it reads clearly
+  // from a distance rather than only when the player is standing next to it.
+  if (state.location === "home") {
+    drawDoorLabel(ctx, HOME_DOOR.x, HOME_DOOR.y, "Exit");
+  } else if (map[HOME_EXTERIOR.doorY] && map[HOME_EXTERIOR.doorY][HOME_EXTERIOR.doorX] === TILE.DOOR) {
+    drawDoorLabel(ctx, HOME_EXTERIOR.doorX, HOME_EXTERIOR.doorY, "Your Cabin");
   }
 
   // Placement preview (ghost) while the player is choosing where to place an item
@@ -322,6 +466,14 @@ function drawFireball(ctx, proj) {
   ctx.restore();
 }
 
+function drawDoorLabel(ctx, tileX, tileY, text) {
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  ctx.fillText(text, tileX * TILE_SIZE + TILE_SIZE / 2, tileY * TILE_SIZE - 4);
+  ctx.textAlign = "left";
+}
+
 function drawPlacedObject(ctx, obj) {
   const px = obj.x * TILE_SIZE;
   const py = obj.y * TILE_SIZE;
@@ -344,7 +496,7 @@ function drawPlacedObject(ctx, obj) {
     return;
   }
 
-  if (obj.type === "campfire") {
+  if (obj.type === "campfire" || obj.type === "fireplace") {
     const glow = 14 + Math.sin(performance.now() / 200) * 3;
     ctx.save();
     ctx.globalAlpha = 0.35;
@@ -399,7 +551,8 @@ function drawFieldMonster(ctx, monster) {
   ctx.textAlign = "center";
   ctx.fillStyle = "#f2f2ec";
   ctx.font = "bold 11px 'Segoe UI', sans-serif";
-  const label = monster.isBoss ? monster.enemy.name : `Lv.${monster.enemy.level}`;
+  ctx.font = monster.isBoss ? "bold 11px 'Segoe UI', sans-serif" : "bold 10px 'Segoe UI', sans-serif";
+  const label = monster.isBoss ? monster.enemy.name : `${monster.enemy.name} Lv.${monster.enemy.level}`;
   ctx.fillText(label, cx, monster.pixelY - 4);
 
   const maxHp = monster.enemy.hp;

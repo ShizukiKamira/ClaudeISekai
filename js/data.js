@@ -17,9 +17,16 @@ const TILE = {
   SHRINE: 5,
   ROCK: 6,
   FLOWER: 7,
+  HERB: 8,
+  MOONLEAF: 9,
+  ROOF: 10,
+  WALL: 11,
+  DOOR: 12,
+  FLOOR: 13,
+  RUG: 14,
 };
 
-const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK]);
+const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK, TILE.WALL, TILE.ROOF]);
 
 // Deterministic PRNG (mulberry32) so the procedurally-scattered map is
 // identical on every load while still looking hand-varied.
@@ -102,6 +109,16 @@ function buildMap() {
     grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.FLOWER;
   }
 
+  // Healing Herb - a common gatherable used in basic potion brewing
+  for (let i = 0; i < 26; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.HERB;
+  }
+
+  // Moonleaf - a rarer gatherable used in stronger alchemy
+  for (let i = 0; i < 12; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.MOONLEAF;
+  }
+
   // Path from the player's landing spot to the shrine clearing
   const carveSegment = (x0, y0, x1, y1) => {
     if (x0 === x1) {
@@ -131,6 +148,7 @@ function buildMap() {
     [6, 40], [18, 30], [46, 6], [10, 36], [34, 18], [58, 3], // item pickups
     [10, 40], [22, 32], [36, 22], [50, 14], [8, 20], // stick pickups
     [16, 26], [44, 10], [28, 36], // flint pickups
+    [HOME_EXTERIOR.doorX, HOME_EXTERIOR.doorY + 1], // approach tile in front of the cabin door
   ];
   for (const [x, y] of keepClear) {
     if (grid[y] && grid[y][x] !== undefined && grid[y][x] !== TILE.PATH && grid[y][x] !== TILE.SHRINE) {
@@ -138,8 +156,74 @@ function buildMap() {
     }
   }
 
+  // The player's cabin - a small solid facade with a single door, carved in
+  // last so nothing scattered above can ever block or overwrite it.
+  for (let x = HOME_EXTERIOR.x0; x <= HOME_EXTERIOR.x1; x++) {
+    grid[HOME_EXTERIOR.y0][x] = TILE.ROOF;
+    grid[HOME_EXTERIOR.y0 + 1][x] = TILE.WALL;
+    grid[HOME_EXTERIOR.y0 + 2][x] = TILE.WALL;
+    grid[HOME_EXTERIOR.y0 + 3][x] = TILE.WALL;
+  }
+  grid[HOME_EXTERIOR.doorY][HOME_EXTERIOR.doorX] = TILE.DOOR;
+
   return grid;
 }
+
+// ---------------------------------------------------------------------------
+// Player's home: a small cabin facade on the overworld, plus its own tiny
+// interior map. Stepping onto a DOOR tile toggles between the two (handled
+// in onPlayerArrivedTile / enterOrExitHome).
+// ---------------------------------------------------------------------------
+
+const HOME_EXTERIOR = { x0: 6, y0: 41, x1: 10, y1: 44, doorX: 8, doorY: 44 };
+
+const HOME_COLS = 11;
+const HOME_ROWS = 8;
+const HOME_DOOR = { x: 5, y: 7 };
+const HOME_SPAWN_INTERIOR = { x: 5, y: 6, dir: "up" };
+
+function buildHomeMap() {
+  const grid = [];
+  for (let y = 0; y < HOME_ROWS; y++) {
+    const row = [];
+    for (let x = 0; x < HOME_COLS; x++) {
+      const border = x === 0 || y === 0 || x === HOME_COLS - 1 || y === HOME_ROWS - 1;
+      row.push(border ? TILE.WALL : TILE.FLOOR);
+    }
+    grid.push(row);
+  }
+  grid[HOME_DOOR.y][HOME_DOOR.x] = TILE.DOOR;
+  for (let y = 2; y <= 4; y++) {
+    for (let x = 4; x <= 6; x++) grid[y][x] = TILE.RUG;
+  }
+  return grid;
+}
+
+const HOME_MAP = buildHomeMap();
+
+const HOME_FURNITURE = [
+  { type: "fireplace", x: 5, y: 1 },
+  { type: "bookshelf", x: 1, y: 1 },
+  { type: "weapon_rack", x: 9, y: 1 },
+  { type: "table", x: 5, y: 3 },
+  { type: "chair", x: 4, y: 3 },
+  { type: "chair", x: 6, y: 3 },
+  { type: "bed", x: 1, y: 5 },
+  { type: "chest", x: 2, y: 5 },
+  { type: "cabinet", x: 9, y: 5 },
+];
+
+// Flavor text for a facing-and-confirm interaction with home furniture that
+// isn't otherwise functional (the bed is handled separately, for sleep).
+const HOME_FLAVOR_TEXT = {
+  bookshelf: "Dust-covered books on the flora and fauna of the Whispering Wood.",
+  weapon_rack: "A rack for your weapons and gear, though it's still mostly bare.",
+  table: "A sturdy wooden table, its surface scarred from years of use.",
+  chair: "A simple wooden chair, pulled up to the table.",
+  chest: "An old traveling chest. Empty, for now.",
+  cabinet: "A cabinet stocked with odds and ends from another world.",
+  fireplace: "The hearth crackles softly, keeping the cabin warm.",
+};
 
 const NPCS = [
   {
@@ -364,6 +448,20 @@ const ITEMS = {
     category: "misc",
     value: 10,
   },
+  healing_herb: {
+    name: "Healing Herb",
+    desc: "A fragrant herb with mild restorative properties. Grows in patches throughout the forest.",
+    type: "material",
+    category: "ingredients",
+    value: 6,
+  },
+  moonleaf: {
+    name: "Moonleaf",
+    desc: "A pale, faintly luminous leaf that only grows in shaded corners of the wood. Potent in alchemy.",
+    type: "material",
+    category: "ingredients",
+    value: 14,
+  },
 };
 
 const CRAFTING_RECIPES = [
@@ -442,8 +540,9 @@ const CRAFTING_RECIPES = [
     result: "potion",
     resultQty: 1,
     requiresTable: true,
-    ingredients: [
-      { item: "slime_gel", qty: 2 },
+    altIngredients: [
+      [{ item: "slime_gel", qty: 2 }],
+      [{ item: "healing_herb", qty: 3 }],
     ],
   },
   {
@@ -452,9 +551,19 @@ const CRAFTING_RECIPES = [
     result: "hi_potion",
     resultQty: 1,
     requiresTable: true,
+    altIngredients: [
+      [{ item: "slime_gel", qty: 2 }, { item: "wolf_fang", qty: 1 }],
+      [{ item: "healing_herb", qty: 2 }, { item: "moonleaf", qty: 1 }],
+    ],
+  },
+  {
+    id: "ether_brew",
+    name: "Ether",
+    result: "ether",
+    resultQty: 1,
+    requiresTable: true,
     ingredients: [
-      { item: "slime_gel", qty: 2 },
-      { item: "wolf_fang", qty: 1 },
+      { item: "moonleaf", qty: 2 },
     ],
   },
   {

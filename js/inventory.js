@@ -502,6 +502,180 @@ function drawGoldIcon(ctx, cx, cy, s) {
   ctx.fill();
 }
 
+function drawHerbIcon(ctx, cx, cy, s) {
+  ctx.strokeStyle = "#3a5c2a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.38);
+  ctx.lineTo(cx, cy - s * 0.1);
+  ctx.stroke();
+  ctx.fillStyle = "#4d9a4d";
+  for (const [dx, dy] of [[-0.22, -0.1], [0.22, -0.02], [0, -0.34], [-0.14, -0.24]]) {
+    ctx.beginPath();
+    ctx.ellipse(cx + s * dx, cy + s * dy, s * 0.16, s * 0.08, dx * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#c9534f";
+  ctx.beginPath();
+  ctx.arc(cx + s * 0.12, cy + s * 0.16, s * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawMoonleafIcon(ctx, cx, cy, s) {
+  ctx.strokeStyle = "#3a5c4a";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.38);
+  ctx.lineTo(cx, cy - s * 0.05);
+  ctx.stroke();
+  const glow = ctx.createRadialGradient(cx, cy - s * 0.12, 1, cx, cy - s * 0.12, s * 0.36);
+  glow.addColorStop(0, "rgba(207,232,224,0.9)");
+  glow.addColorStop(1, "rgba(207,232,224,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy - s * 0.12, s * 0.36, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#cfe8e0";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - s * 0.12, s * 0.14, s * 0.28, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#eaf6f2";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function drawBedIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(cx - s * 0.42, cy - s * 0.42, s * 0.84, s * 0.84);
+  ctx.fillStyle = "#8e3f3f";
+  ctx.fillRect(cx - s * 0.36, cy - s * 0.36, s * 0.72, s * 0.72);
+  ctx.fillStyle = "#e8dfc9";
+  ctx.fillRect(cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.2);
+  ctx.strokeStyle = "#5c3520";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(cx - s * 0.3, cy - s * 0.3, s * 0.6, s * 0.2);
+  ctx.fillStyle = "#a8524f";
+  ctx.fillRect(cx - s * 0.3, cy + s * 0.02, s * 0.6, s * 0.3);
+}
+
+function drawTableIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#8a6a45";
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#5c4326";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.fillStyle = "#7a5636";
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.26, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawChairIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(cx - s * 0.28, cy - s * 0.12, s * 0.56, s * 0.4);
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.28, cy - s * 0.12, s * 0.56, s * 0.4);
+  ctx.fillStyle = "#8a6a45";
+  ctx.fillRect(cx - s * 0.28, cy - s * 0.36, s * 0.56, s * 0.14);
+}
+
+function drawBookshelfIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#5c4326";
+  ctx.fillRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  const colors = ["#8e3f3f", "#4f8dae", "#59c46b", "#c9a03a", "#8e6fce"];
+  for (let row = 0; row < 2; row++) {
+    let x = cx - s * 0.3;
+    for (let i = 0; i < 5; i++) {
+      const w = s * 0.1;
+      ctx.fillStyle = colors[(i + row * 2) % colors.length];
+      ctx.fillRect(x, cy - s * 0.32 + row * s * 0.4, w, s * 0.3);
+      x += w + 1;
+    }
+  }
+}
+
+function drawChestIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#7a5636";
+  ctx.fillRect(cx - s * 0.38, cy - s * 0.08, s * 0.76, s * 0.4);
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.38, cy - s * 0.08, s * 0.76, s * 0.4);
+  ctx.fillStyle = "#5c4326";
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.38, cy - s * 0.08);
+  ctx.quadraticCurveTo(cx, cy - s * 0.34, cx + s * 0.38, cy - s * 0.08);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#e8c97a";
+  ctx.fillRect(cx - s * 0.05, cy + s * 0.04, s * 0.1, s * 0.14);
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  ctx.fillRect(cx - s * 0.38, cy - s * 0.08, s * 0.76, 2);
+}
+
+function drawCabinetIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.36, cy - s * 0.42, s * 0.72, s * 0.84);
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.42);
+  ctx.lineTo(cx, cy + s * 0.42);
+  ctx.stroke();
+  ctx.fillStyle = "#e8c97a";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.08, cy, s * 0.03, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(cx + s * 0.08, cy, s * 0.03, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawWeaponRackIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#5c4326";
+  ctx.fillRect(cx - s * 0.36, cy + s * 0.24, s * 0.72, s * 0.1);
+  ctx.save();
+  ctx.translate(cx - s * 0.12, cy);
+  ctx.rotate(-Math.PI / 10);
+  drawSwordIcon(ctx, 0, 0, s * 0.85);
+  ctx.restore();
+  ctx.save();
+  ctx.translate(cx + s * 0.16, cy);
+  ctx.rotate(Math.PI / 8);
+  drawAxeIcon(ctx, 0, 0, s * 0.75);
+  ctx.restore();
+}
+
+function drawFireplaceIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#5f5f58";
+  ctx.fillRect(cx - s * 0.4, cy - s * 0.4, s * 0.8, s * 0.8);
+  ctx.strokeStyle = "#3a3a34";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(cx - s * 0.4, cy - s * 0.4, s * 0.8, s * 0.8);
+  ctx.fillStyle = "#1a1a16";
+  ctx.fillRect(cx - s * 0.26, cy - s * 0.2, s * 0.52, s * 0.5);
+  const flicker = 0.85 + Math.sin(performance.now() / 150) * 0.15;
+  ctx.fillStyle = `rgba(246,169,74,${flicker})`;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - s * 0.1);
+  ctx.quadraticCurveTo(cx + s * 0.14, cy + s * 0.06, cx, cy + s * 0.26);
+  ctx.quadraticCurveTo(cx - s * 0.14, cy + s * 0.06, cx, cy - s * 0.1);
+  ctx.fill();
+  ctx.fillStyle = "#f6d97a";
+  ctx.beginPath();
+  ctx.arc(cx, cy + s * 0.1, s * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -583,6 +757,36 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "gold":
       drawGoldIcon(ctx, cx, cy, s);
+      break;
+    case "healing_herb":
+      drawHerbIcon(ctx, cx, cy, s);
+      break;
+    case "moonleaf":
+      drawMoonleafIcon(ctx, cx, cy, s);
+      break;
+    case "bed":
+      drawBedIcon(ctx, cx, cy, s);
+      break;
+    case "table":
+      drawTableIcon(ctx, cx, cy, s);
+      break;
+    case "chair":
+      drawChairIcon(ctx, cx, cy, s);
+      break;
+    case "bookshelf":
+      drawBookshelfIcon(ctx, cx, cy, s);
+      break;
+    case "chest":
+      drawChestIcon(ctx, cx, cy, s);
+      break;
+    case "cabinet":
+      drawCabinetIcon(ctx, cx, cy, s);
+      break;
+    case "weapon_rack":
+      drawWeaponRackIcon(ctx, cx, cy, s);
+      break;
+    case "fireplace":
+      drawFireplaceIcon(ctx, cx, cy, s);
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);

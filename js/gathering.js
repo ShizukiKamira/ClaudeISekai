@@ -52,3 +52,31 @@ function handleCampfireInteract(state) {
     Dialogue.show(["The fire crackles quietly. It's still daylight - no need to sleep yet."]);
   }
 }
+
+function handleGatherHerb(state, x, y) {
+  addItem(state, "healing_herb", 1);
+  state.map[y][x] = TILE.GRASS;
+  Dialogue.show(["You pick a sprig of Healing Herb."]);
+}
+
+function handleGatherMoonleaf(state, x, y) {
+  addItem(state, "moonleaf", 1);
+  state.map[y][x] = TILE.GRASS;
+  Dialogue.show(["You gather a pale leaf of Moonleaf."]);
+}
+
+function handleBedInteract(state) {
+  if (isNightTime(state.turnCount)) {
+    Dialogue.show(["You climb into the warm bed.", "Sleep comes quickly..."], {
+      onComplete: () => {
+        const p = state.player;
+        p.hp = p.maxHp;
+        p.mp = p.maxMp;
+        const remainder = state.turnCount % CYCLE_LENGTH;
+        state.turnCount += CYCLE_LENGTH - remainder;
+      },
+    });
+  } else {
+    Dialogue.show(["The bed looks inviting, but it's still daylight outside."]);
+  }
+}

@@ -28,6 +28,8 @@ function createInitialState() {
     menuFlashUntil: 0,
     craftCursor: 0,
     craftScroll: 0,
+    location: "overworld", // overworld | home
+    exteriorSnapshot: null, // set while indoors: { map, npcs, monsters, itemPickups, placedObjects, returnX, returnY, returnDir }
     shop: { mode: "buy", filterIndex: 0, cursor: 0 },
     shopFlashMessage: "",
     shopFlashUntil: 0,
@@ -57,11 +59,14 @@ function hasSaveGame() {
 
 function saveGame(s) {
   try {
+    // Always persist the overworld's state, even mid-visit to the home
+    // interior - the snapshot holds the real exterior data while indoors.
+    const indoors = s.location === "home" && s.exteriorSnapshot;
     const payload = {
       player: s.player,
       flags: s.flags,
-      itemPickups: s.itemPickups,
-      placedObjects: s.placedObjects,
+      itemPickups: indoors ? s.exteriorSnapshot.itemPickups : s.itemPickups,
+      placedObjects: indoors ? s.exteriorSnapshot.placedObjects : s.placedObjects,
     };
     localStorage.setItem(SAVE_KEY, JSON.stringify(payload));
     return true;
@@ -114,10 +119,20 @@ const Camera = { x: 0, y: 0 };
 function updateCamera(state) {
   const mapPixelW = state.map[0].length * TILE_SIZE;
   const mapPixelH = state.map.length * TILE_SIZE;
-  const targetX = state.player.pixelX + TILE_SIZE / 2 - canvas.width / 2;
-  const targetY = state.player.pixelY + TILE_SIZE / 2 - canvas.height / 2;
-  Camera.x = Math.max(0, Math.min(targetX, Math.max(0, mapPixelW - canvas.width)));
-  Camera.y = Math.max(0, Math.min(targetY, Math.max(0, mapPixelH - canvas.height)));
+  // A map smaller than the viewport (e.g. the home interior) is centered
+  // rather than pinned to the top-left corner.
+  if (mapPixelW <= canvas.width) {
+    Camera.x = -(canvas.width - mapPixelW) / 2;
+  } else {
+    const targetX = state.player.pixelX + TILE_SIZE / 2 - canvas.width / 2;
+    Camera.x = Math.max(0, Math.min(targetX, mapPixelW - canvas.width));
+  }
+  if (mapPixelH <= canvas.height) {
+    Camera.y = -(canvas.height - mapPixelH) / 2;
+  } else {
+    const targetY = state.player.pixelY + TILE_SIZE / 2 - canvas.height / 2;
+    Camera.y = Math.max(0, Math.min(targetY, mapPixelH - canvas.height));
+  }
 }
 
 Input.init();
@@ -301,14 +316,68 @@ function updateOverworld(dt) {
       state.menuTab = "crafting";
       state.menuCursor = 0;
       state.craftCursor = 0;
+    } else if (placedAtTarget && placedAtTarget.type === "bed") {
+      handleBedInteract(state);
+    } else if (placedAtTarget && HOME_FLAVOR_TEXT[placedAtTarget.type]) {
+      Dialogue.show([HOME_FLAVOR_TEXT[placedAtTarget.type]]);
     } else {
       const tile = state.map[target.y] && state.map[target.y][target.x];
       if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
         handleChopTree(state, target.x, target.y);
       } else if (tile === TILE.ROCK) {
         handleMineBoulder(state, target.x, target.y);
+      } else if (tile === TILE.HERB) {
+        handleGatherHerb(state, target.x, target.y);
+      } else if (tile === TILE.MOONLEAF) {
+        handleGatherMoonleaf(state, target.x, target.y);
       }
     }
+  }
+}
+
+function placePlayerAt(state, x, y, dir) {
+  const p = state.player;
+  p.tileX = x;
+  p.tileY = y;
+  p.pixelX = x * TILE_SIZE;
+  p.pixelY = y * TILE_SIZE;
+  p.moving = false;
+  p.dir = dir;
+}
+
+// Toggles between the overworld and the player's home interior. Stepping
+// onto a DOOR tile (in onPlayerArrivedTile) calls this in either direction -
+// entering stashes the overworld's dynamic entities behind a snapshot and
+// swaps in the tiny home map/furniture; exiting restores them.
+function enterOrExitHome(state) {
+  if (state.location !== "home") {
+    state.exteriorSnapshot = {
+      map: state.map,
+      npcs: state.npcs,
+      monsters: state.monsters,
+      itemPickups: state.itemPickups,
+      placedObjects: state.placedObjects,
+      returnX: HOME_EXTERIOR.doorX,
+      returnY: HOME_EXTERIOR.doorY + 1,
+      returnDir: "down",
+    };
+    state.map = HOME_MAP;
+    state.npcs = [];
+    state.monsters = [];
+    state.itemPickups = [];
+    state.placedObjects = HOME_FURNITURE.map((f) => ({ ...f }));
+    state.location = "home";
+    placePlayerAt(state, HOME_SPAWN_INTERIOR.x, HOME_SPAWN_INTERIOR.y, HOME_SPAWN_INTERIOR.dir);
+  } else {
+    const snap = state.exteriorSnapshot;
+    state.map = snap.map;
+    state.npcs = snap.npcs;
+    state.monsters = snap.monsters;
+    state.itemPickups = snap.itemPickups;
+    state.placedObjects = snap.placedObjects;
+    state.location = "overworld";
+    state.exteriorSnapshot = null;
+    placePlayerAt(state, snap.returnX, snap.returnY, snap.returnDir);
   }
 }
 
@@ -503,6 +572,7 @@ function renderClassSelect() {
 }
 
 function renderNightOverlay(state) {
+  if (state.location === "home") return; // the cabin is always lit indoors
   const darkness = 1 - getDaylightFactor(state.turnCount);
   if (darkness <= 0) return;
   ctx.fillStyle = `rgba(6,10,30,${(darkness * 0.75).toFixed(3)})`;
