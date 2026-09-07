@@ -51,22 +51,58 @@ function craftRecipe(state, recipe) {
   state.menuFlashUntil = performance.now() + 1400;
 }
 
+// Shared by update (to decide scroll clamping/follow) and render (to lay out
+// cards) so the two never disagree about how many rows fit or exist.
+function craftingLayout(recipeCount) {
+  const cardH = 82, cardGap = 8, hintH = 22;
+  // Mirrors renderMenu's call: panelH(canvas.height - 80) - 96 - 44.
+  const h = canvas.height - 220;
+  const gridH = h - hintH;
+  const visibleRows = Math.max(1, Math.floor((gridH + cardGap) / (cardH + cardGap)));
+  const totalRows = Math.max(1, Math.ceil(recipeCount / CRAFTING_GRID_COLS));
+  return { visibleRows, totalRows };
+}
+
 function updateCraftingTab(state) {
   const recipes = getAvailableRecipes(state);
   if (recipes.length === 0) return;
   state.craftCursor = Math.min(state.craftCursor, recipes.length - 1);
+  const cursorBefore = state.craftCursor;
   if (Input.wasPressed("ArrowRight")) state.craftCursor = Math.min(state.craftCursor + 1, recipes.length - 1);
   if (Input.wasPressed("ArrowLeft")) state.craftCursor = Math.max(state.craftCursor - 1, 0);
   if (Input.wasPressed("ArrowDown")) state.craftCursor = Math.min(state.craftCursor + CRAFTING_GRID_COLS, recipes.length - 1);
   if (Input.wasPressed("ArrowUp")) state.craftCursor = Math.max(state.craftCursor - CRAFTING_GRID_COLS, 0);
+
+  const { visibleRows, totalRows } = craftingLayout(recipes.length);
+  let scroll = state.craftScroll || 0;
+  // Only force the view to follow the selection when the keyboard just
+  // moved it - a mouse-wheel scroll (below) doesn't touch the cursor, so it
+  // must not get snapped straight back to the cursor's row every frame.
+  if (state.craftCursor !== cursorBefore) {
+    const cursorRow = Math.floor(state.craftCursor / CRAFTING_GRID_COLS);
+    if (cursorRow < scroll) scroll = cursorRow;
+    if (cursorRow > scroll + visibleRows - 1) scroll = cursorRow - visibleRows + 1;
+  }
+  if (Input.wheelDelta) {
+    scroll += Input.wheelDelta > 0 ? 1 : -1;
+    Input.wheelDelta = 0;
+  }
+  state.craftScroll = Math.max(0, Math.min(scroll, Math.max(0, totalRows - visibleRows)));
+
   if (Input.confirmPressed()) {
     craftRecipe(state, recipes[state.craftCursor]);
   }
   if (Input.clickPos) {
     const hit = (state.uiHitboxes.craftCards || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
     if (hit) {
-      state.craftCursor = hit.idx;
-      craftRecipe(state, recipes[hit.idx]);
+      // First click on a card just selects it; a second click on the
+      // already-selected card crafts it - mirrors the inventory's
+      // select-then-use pattern so a stray click doesn't burn materials.
+      if (state.craftCursor === hit.idx) {
+        craftRecipe(state, recipes[hit.idx]);
+      } else {
+        state.craftCursor = hit.idx;
+      }
       Input.clickPos = null;
     }
   }
@@ -85,16 +121,11 @@ function renderCraftingTab(ctx, state, x, y, w, h) {
 
   // Reserve a line at the bottom for the hint text so the card grid never
   // grows into it - instead, once more rows exist than fit, the list
-  // scrolls (auto-following the selection) rather than overflowing.
-  const hintH = 22;
-  const gridH = h - hintH;
-  const visibleRows = Math.max(1, Math.floor((gridH + cardGap) / (cardH + cardGap)));
-  const totalRows = Math.max(1, Math.ceil(recipes.length / cols));
-  const cursorRow = Math.floor(state.craftCursor / cols);
-  let scroll = state.craftScroll || 0;
-  if (cursorRow < scroll) scroll = cursorRow;
-  if (cursorRow > scroll + visibleRows - 1) scroll = cursorRow - visibleRows + 1;
-  scroll = Math.max(0, Math.min(scroll, Math.max(0, totalRows - visibleRows)));
+  // scrolls (via updateCraftingTab, which follows the keyboard cursor or a
+  // mouse-wheel scroll) rather than overflowing. Render just clamps what
+  // it's handed, so it never fights that decision.
+  const { visibleRows, totalRows } = craftingLayout(recipes.length);
+  const scroll = Math.max(0, Math.min(state.craftScroll || 0, Math.max(0, totalRows - visibleRows)));
   state.craftScroll = scroll;
 
   state.uiHitboxes.craftCards = [];

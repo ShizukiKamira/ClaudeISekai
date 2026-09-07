@@ -7,6 +7,7 @@ const Input = {
   pressed: new Set(), // keys pressed this frame (edge-triggered, cleared after read)
   heldSince: new Map(), // code -> timestamp the key was first pressed down
   clickPos: null, // {x, y} in canvas pixel space for a click this frame, cleared after the frame
+  wheelDelta: 0, // accumulated mouse-wheel deltaY this frame, cleared after the frame
 
   init() {
     window.addEventListener("keydown", (e) => {
@@ -36,6 +37,7 @@ const Input = {
   endFrame() {
     this.pressed.clear();
     this.clickPos = null;
+    this.wheelDelta = 0;
   },
 
   moveDirection() {

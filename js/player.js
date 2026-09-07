@@ -29,6 +29,10 @@ function createPlayer() {
     attackCooldownUntil: 0,
     lastAttackAt: -Infinity,
     fatalParryUsedAt: -Infinity,
+    lastToolSwingAt: -Infinity,
+    toolSwingType: null, // "axe" | "pickaxe", set alongside lastToolSwingAt
+    hunger: HUNGER_MAX,
+    thirst: THIRST_MAX,
     tilesOutOfCombat: 0,
     hotbar: new Array(HOTBAR_SIZE).fill(null),
     hpFloatText: null,
@@ -158,6 +162,8 @@ function facingTile(player) {
 function onPlayerArrivedTile(state) {
   state.turnCount += state.player.crouching ? 3 : 1;
   tickOutOfCombatRegen(state);
+  tickHungerThirst(state);
+  if (state.mode === "GAMEOVER") return;
 
   checkMonsterCollision(state);
 
@@ -172,6 +178,7 @@ function onPlayerArrivedTile(state) {
   }
   checkItemPickup(state);
 
+  updateAnimalsTurn(state);
   updateMonstersTurn(state);
   checkMonsterCollision(state);
 }

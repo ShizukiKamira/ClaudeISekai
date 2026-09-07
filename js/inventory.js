@@ -676,6 +676,100 @@ function drawFireplaceIcon(ctx, cx, cy, s) {
   ctx.fill();
 }
 
+function drawTrapIcon(ctx, cx, cy, s) {
+  ctx.strokeStyle = "#8a8a80";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, s * 0.36, s * 0.24, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = "#5c5c54";
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const jx = cx + Math.cos(angle) * s * 0.36;
+    const jy = cy + Math.sin(angle) * s * 0.24;
+    ctx.save();
+    ctx.translate(jx, jy);
+    ctx.rotate(angle);
+    ctx.fillRect(-s * 0.02, -s * 0.09, s * 0.04, s * 0.18);
+    ctx.restore();
+  }
+  ctx.strokeStyle = "#3a2a1a";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.2, cy - s * 0.14);
+  ctx.lineTo(cx + s * 0.2, cy + s * 0.14);
+  ctx.stroke();
+}
+
+function drawRabbitMeatIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#c9534f";
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.3, cy + s * 0.1);
+  ctx.quadraticCurveTo(cx - s * 0.32, cy - s * 0.28, cx, cy - s * 0.3);
+  ctx.quadraticCurveTo(cx + s * 0.32, cy - s * 0.24, cx + s * 0.22, cy + s * 0.2);
+  ctx.quadraticCurveTo(cx + s * 0.1, cy + s * 0.36, cx - s * 0.12, cy + s * 0.3);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#7a2a28";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = "#e8dfc9";
+  ctx.beginPath();
+  ctx.ellipse(cx + s * 0.16, cy + s * 0.22, s * 0.1, s * 0.06, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFishingRodIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 5);
+  ctx.strokeStyle = "#8a6a45";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.4, s * 0.42);
+  ctx.lineTo(s * 0.42, -s * 0.42);
+  ctx.stroke();
+  ctx.restore();
+  ctx.strokeStyle = "rgba(230,230,225,0.8)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const tipX = cx + Math.cos(-Math.PI / 5) * s * 0.42;
+  const tipY = cy + Math.sin(-Math.PI / 5) * s * 0.42;
+  ctx.moveTo(tipX, tipY);
+  ctx.quadraticCurveTo(tipX - s * 0.1, tipY + s * 0.5, cx - s * 0.05, cy + s * 0.4);
+  ctx.stroke();
+  ctx.fillStyle = "#e8c97a";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.05, cy + s * 0.4, s * 0.05, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawFishIcon(ctx, cx, cy, s, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.ellipse(cx - s * 0.05, cy, s * 0.34, s * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + s * 0.26, cy);
+  ctx.lineTo(cx + s * 0.42, cy - s * 0.16);
+  ctx.lineTo(cx + s * 0.42, cy + s * 0.16);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.3)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "#1a1a16";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.28, cy - s * 0.04, s * 0.04, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - s * 0.15, cy - s * 0.12);
+  ctx.lineTo(cx + s * 0.15, cy - s * 0.06);
+  ctx.stroke();
+}
+
 function drawItemIcon(ctx, itemId, cx, cy, s) {
   ctx.save();
   switch (itemId) {
@@ -787,6 +881,30 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
       break;
     case "fireplace":
       drawFireplaceIcon(ctx, cx, cy, s);
+      break;
+    case "basic_trap":
+      drawTrapIcon(ctx, cx, cy, s);
+      break;
+    case "rabbit_meat":
+      drawRabbitMeatIcon(ctx, cx, cy, s);
+      break;
+    case "fishing_rod":
+      drawFishingRodIcon(ctx, cx, cy, s);
+      break;
+    case "fish_small":
+      drawFishIcon(ctx, cx, cy, s * 0.6, "#7aa9c9");
+      break;
+    case "fish_medium":
+      drawFishIcon(ctx, cx, cy, s * 0.8, "#5c8fae");
+      break;
+    case "fish_large":
+      drawFishIcon(ctx, cx, cy, s, "#4a7a9a");
+      break;
+    case "fish_extra_large":
+      drawFishIcon(ctx, cx, cy, s * 1.15, "#3a6a8a");
+      break;
+    case "fish_golden":
+      drawFishIcon(ctx, cx, cy, s * 0.9, "#e8c97a");
       break;
     default:
       drawGenericIcon(ctx, cx, cy, s);

@@ -7,34 +7,50 @@ function hasItem(state, itemId) {
   return state.player.inventory.some((i) => i.item === itemId);
 }
 
-function handleChopTree(state, x, y) {
-  if (!hasItem(state, "axe")) {
-    Dialogue.show(["You need an Axe to chop this tree."]);
+// Chopping a tree or mining a boulder now takes RESOURCE_HITS_REQUIRED
+// separate hits (via Enter or a click, from js/main.js) before it gives up
+// its loot and clears. Progress is tracked per-tile in state.resourceHits,
+// keyed by "x,y", so walking away and coming back resumes where you left off.
+function hitResourceNode(state, x, y, tileType) {
+  const isTree = tileType === TILE.TREE;
+  const toolNeeded = isTree ? "axe" : "pickaxe";
+  if (!hasItem(state, toolNeeded)) {
+    Dialogue.show([`You need ${isTree ? "an Axe" : "a Pickaxe"} to ${isTree ? "chop this tree" : "mine this boulder"}.`]);
     return;
   }
-  const logs = 2 + Math.floor(Math.random() * 2); // 2-3
-  const sticks = 2 + Math.floor(Math.random() * 2); // 2-3
-  addItem(state, "log", logs);
-  addItem(state, "stick", sticks);
-  state.map[y][x] = TILE.GRASS;
-  Dialogue.show([`You chop down the tree. Found ${logs} Log${logs > 1 ? "s" : ""} and ${sticks} Stick${sticks > 1 ? "s" : ""}.`]);
-}
 
-function handleMineBoulder(state, x, y) {
-  if (!hasItem(state, "pickaxe")) {
-    Dialogue.show(["You need a Pickaxe to mine this boulder."]);
+  const p = state.player;
+  p.lastToolSwingAt = performance.now();
+  p.toolSwingType = toolNeeded;
+
+  const key = `${x},${y}`;
+  const hits = (state.resourceHits[key] || 0) + 1;
+  if (hits < RESOURCE_HITS_REQUIRED) {
+    state.resourceHits[key] = hits;
+    state.worldFlashMessage = `${isTree ? "Chopping" : "Mining"}... (${hits}/${RESOURCE_HITS_REQUIRED})`;
+    state.worldFlashUntil = performance.now() + 700;
     return;
   }
-  const stone = 2 + Math.floor(Math.random() * 2); // 2-3
-  const oreType = Math.random() < 0.5 ? "iron_ore" : "copper_ore";
-  const oreQty = Math.floor(Math.random() * 3); // 0-2
-  const flint = 1 + Math.floor(Math.random() * 2); // 1-2
-  addItem(state, "stone", stone);
-  if (oreQty > 0) addItem(state, oreType, oreQty);
-  addItem(state, "flint", flint);
+
+  delete state.resourceHits[key];
   state.map[y][x] = TILE.GRASS;
-  const oreMsg = oreQty > 0 ? ` and ${oreQty} ${ITEMS[oreType].name}` : "";
-  Dialogue.show([`You mine the boulder. Found ${stone} Stone, ${flint} Flint${oreMsg}.`]);
+  if (isTree) {
+    const logs = 2 + Math.floor(Math.random() * 2); // 2-3
+    const sticks = 2 + Math.floor(Math.random() * 2); // 2-3
+    addItem(state, "log", logs);
+    addItem(state, "stick", sticks);
+    Dialogue.show([`You chop down the tree. Found ${logs} Log${logs > 1 ? "s" : ""} and ${sticks} Stick${sticks > 1 ? "s" : ""}.`]);
+  } else {
+    const stone = 2 + Math.floor(Math.random() * 2); // 2-3
+    const oreType = Math.random() < 0.5 ? "iron_ore" : "copper_ore";
+    const oreQty = Math.floor(Math.random() * 3); // 0-2
+    const flint = 1 + Math.floor(Math.random() * 2); // 1-2
+    addItem(state, "stone", stone);
+    if (oreQty > 0) addItem(state, oreType, oreQty);
+    addItem(state, "flint", flint);
+    const oreMsg = oreQty > 0 ? ` and ${oreQty} ${ITEMS[oreType].name}` : "";
+    Dialogue.show([`You mine the boulder. Found ${stone} Stone, ${flint} Flint${oreMsg}.`]);
+  }
 }
 
 function handleCampfireInteract(state) {

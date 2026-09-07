@@ -462,6 +462,69 @@ const ITEMS = {
     category: "ingredients",
     value: 14,
   },
+  basic_trap: {
+    name: "Basic Trap",
+    desc: "A simple snare. Select it here to place it in tall grass - a rabbit that wanders close may get caught. Press Enter to check it.",
+    type: "placeable",
+    category: "misc",
+    value: 18,
+  },
+  rabbit_meat: {
+    name: "Rabbit Meat",
+    desc: "A cut of rabbit meat from a trap. Restores 35 Hunger.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 35,
+    value: 12,
+  },
+  fishing_rod: {
+    name: "Fishing Rod",
+    desc: "A simple rod and line. Carrying one lets you fish any lake or pond - click the water in front of you to cast.",
+    type: "tool",
+    category: "misc",
+    value: 40,
+  },
+  fish_small: {
+    name: "Small Fish",
+    desc: "A modest catch. Restores 15 Hunger.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 15,
+    value: 15,
+  },
+  fish_medium: {
+    name: "Medium Fish",
+    desc: "A decent-sized catch. Restores 25 Hunger.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 25,
+    value: 35,
+  },
+  fish_large: {
+    name: "Large Fish",
+    desc: "A hefty catch. Restores 35 Hunger.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 35,
+    value: 70,
+  },
+  fish_extra_large: {
+    name: "Extra Large Fish",
+    desc: "An impressive catch, worth showing off. Restores 45 Hunger.",
+    type: "consumable",
+    category: "items",
+    restoreHunger: 45,
+    value: 150,
+  },
+  fish_golden: {
+    name: "Golden Fish",
+    desc: "A shimmering, legendary catch. Far too precious to eat - sells for 1000 gold.",
+    type: "misc",
+    category: "misc",
+    // The shop sells items back at half their `value`, so this is set to
+    // 2000 to land on the requested 1000-gold sell price.
+    value: 2000,
+  },
 };
 
 const CRAFTING_RECIPES = [
@@ -577,12 +640,35 @@ const CRAFTING_RECIPES = [
       { item: "stick", qty: 1 },
     ],
   },
+  {
+    id: "basic_trap_crafted",
+    name: "Basic Trap",
+    result: "basic_trap",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "stick", qty: 4 },
+      { item: "log", qty: 1 },
+    ],
+  },
+  {
+    id: "fishing_rod_crafted",
+    name: "Fishing Rod",
+    result: "fishing_rod",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "stick", qty: 3 },
+      { item: "log", qty: 1 },
+      { item: "flint", qty: 1 },
+    ],
+  },
 ];
 
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
   "stick", "flint", "log", "stone", "iron_ore", "copper_ore", "axe", "pickaxe", "bridge",
-  "furnace", "iron_ingot", "copper_ingot", "crafting_table",
+  "furnace", "iron_ingot", "copper_ingot", "crafting_table", "basic_trap", "fishing_rod",
 ];
 
 const ITEM_CATEGORIES = [
@@ -742,6 +828,8 @@ const PLAYER_MOVE_SPEED = 150; // px/s, was 220 - slower for reaction time
 const MONSTER_MOVE_SPEED = 130; // px/s, was 260
 const ATTACK_COOLDOWN_MS = 500;
 const SWING_ANIM_MS = 200; // how long the melee swing arc animates for
+const TOOL_SWING_ANIM_MS = 250; // how long the axe/pickaxe lunge animates for
+const RESOURCE_HITS_REQUIRED = 3; // hits needed to fell a tree or break a boulder
 const MONSTER_ATTACK_INTERVAL_MS = 1300;
 const FIREBALL_SPEED = 260; // px/s
 const FIREBALL_MAX_LIFE_MS = 1500;
@@ -753,3 +841,53 @@ const OUT_OF_COMBAT_TILE_THRESHOLD = 5; // tiles walked before regen kicks in
 const HP_REGEN_PER_TILE = 3;
 const MP_REGEN_PER_TILE = 1;
 const HOTBAR_SIZE = 9;
+
+// ---------------------------------------------------------------------------
+// Survival: hunger/thirst drain slowly as the player walks, restored by
+// eating/drinking. Empty of either starts chipping away at HP.
+// ---------------------------------------------------------------------------
+
+const HUNGER_MAX = 100;
+const THIRST_MAX = 100;
+const HUNGER_DECAY_PER_TILE = 0.06;
+const THIRST_DECAY_PER_TILE = 0.09;
+const STARVATION_DAMAGE = 1;
+const STARVATION_INTERVAL_TILES = 4; // hunger/thirst at 0 costs 1 HP every N tiles moved
+
+// ---------------------------------------------------------------------------
+// Rabbits: harmless critters that wander tall grass, caught with a placed
+// Basic Trap rather than fought - capped per-map like field monsters.
+// ---------------------------------------------------------------------------
+
+const RABBIT_LIMIT = 2;
+const RABBIT_SPAWN_CHANCE = 0.08;
+const RABBIT_MOVE_SPEED = 110; // px/s
+const TRAP_CATCH_CHANCE = 0.2; // per monster-turn tick, while a rabbit is adjacent to an unloaded trap
+
+// ---------------------------------------------------------------------------
+// Fishing: cast at a facing water tile with a Fishing Rod, wait for a bite,
+// then click or press F within the reaction window to land the catch.
+// ---------------------------------------------------------------------------
+
+const FISH_CAST_MS = 500; // line-toss animation before the bobber settles
+const FISH_WAIT_MIN_MS = 1800;
+const FISH_WAIT_MAX_MS = 4500;
+const FISH_BITE_WINDOW_MS = 1400; // time to react once the "!" appears
+
+const FISH_RARITY_TABLE = [
+  { id: "fish_small", weight: 50 },
+  { id: "fish_medium", weight: 25 },
+  { id: "fish_large", weight: 10 },
+  { id: "fish_extra_large", weight: 9 },
+  { id: "fish_golden", weight: 6 },
+];
+
+function rollFishCatch() {
+  const roll = Math.random() * 100;
+  let acc = 0;
+  for (const entry of FISH_RARITY_TABLE) {
+    acc += entry.weight;
+    if (roll < acc) return entry.id;
+  }
+  return FISH_RARITY_TABLE[0].id;
+}

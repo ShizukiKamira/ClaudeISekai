@@ -31,6 +31,9 @@ function applyItemEffect(state, itemId) {
   } else if (data.restoreMp) {
     p.mp = Math.min(p.maxMp, p.mp + data.restoreMp);
     message = `You use a ${data.name} and recover ${data.restoreMp} MP.`;
+  } else if (data.restoreHunger) {
+    p.hunger = Math.min(HUNGER_MAX, p.hunger + data.restoreHunger);
+    message = `You eat the ${data.name} and recover ${data.restoreHunger} Hunger.`;
   }
   entry.qty -= 1;
   if (entry.qty <= 0) p.inventory = p.inventory.filter((i) => i.qty > 0);
@@ -231,6 +234,8 @@ function tickOutOfCombatRegen(state) {
   const p = state.player;
   p.tilesOutOfCombat += 1;
   if (p.tilesOutOfCombat <= OUT_OF_COMBAT_TILE_THRESHOLD) return;
+  // A starving or dehydrated body doesn't mend itself passively.
+  if (p.hunger <= 0 || p.thirst <= 0) return;
 
   const now = performance.now();
   if (p.hp < p.maxHp) {

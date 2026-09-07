@@ -342,6 +342,17 @@ function renderMap(ctx, state) {
       if (isNearPlayer(state, obj.x, obj.y)) {
         drawInteractPrompt(ctx, obj.x, obj.y, "Enter: open recipes");
       }
+    } else if (obj.type === "basic_trap") {
+      if (obj.loaded) {
+        ctx.fillStyle = "#e84f4f";
+        ctx.font = "bold 20px 'Segoe UI', sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("!", obj.x * TILE_SIZE + TILE_SIZE / 2, obj.y * TILE_SIZE - 12);
+        ctx.textAlign = "left";
+      }
+      if (isNearPlayer(state, obj.x, obj.y)) {
+        drawInteractPrompt(ctx, obj.x, obj.y, obj.loaded ? "Enter: collect catch" : "Enter: check trap");
+      }
     }
   }
 
@@ -382,6 +393,11 @@ function renderMap(ctx, state) {
     drawFieldMonster(ctx, monster);
   }
 
+  // Rabbits - harmless, no HP bar or level, just a small critter sprite
+  for (const animal of state.animals) {
+    drawRabbit(ctx, animal);
+  }
+
   // Player
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true, state.player.moving);
   drawPlayerFloatText(ctx, state.player);
@@ -390,8 +406,63 @@ function renderMap(ctx, state) {
   if (performance.now() - state.player.lastAttackAt < SWING_ANIM_MS) {
     drawSwordSwing(ctx, state.player);
   }
+  if (state.player.toolSwingType && performance.now() - state.player.lastToolSwingAt < TOOL_SWING_ANIM_MS) {
+    drawToolSwing(ctx, state.player);
+  }
   for (const proj of state.projectiles) {
     drawFireball(ctx, proj);
+  }
+
+  if (state.fishing.active) {
+    drawFishingLine(ctx, state);
+  }
+}
+
+// The line arcs out from the player toward the water tile during "casting",
+// then holds still with a floating bobber; during "bite" the bobber dips
+// and a red "!" appears, the player's cue to click or press F.
+function drawFishingLine(ctx, state) {
+  const f = state.fishing;
+  const now = performance.now();
+  const player = state.player;
+  const rodX = player.pixelX + TILE_SIZE / 2;
+  const rodY = player.pixelY + TILE_SIZE / 2 - 6;
+  const waterX = f.targetX * TILE_SIZE + TILE_SIZE / 2;
+  const waterY = f.targetY * TILE_SIZE + TILE_SIZE / 2;
+
+  let bobberX, bobberY;
+  if (f.phase === "casting") {
+    const t = Math.min(1, (now - f.phaseStartedAt) / FISH_CAST_MS);
+    bobberX = rodX + (waterX - rodX) * t;
+    bobberY = rodY + (waterY - rodY) * t - Math.sin(t * Math.PI) * 18; // little arc
+  } else {
+    bobberX = waterX;
+    bobberY = waterY + Math.sin(now / 260) * 2;
+    if (f.phase === "bite") bobberY += 4; // sinks slightly on a bite
+  }
+
+  ctx.strokeStyle = "rgba(240,240,235,0.7)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(rodX, rodY);
+  ctx.lineTo(bobberX, bobberY);
+  ctx.stroke();
+
+  ctx.fillStyle = "#e84f4f";
+  ctx.beginPath();
+  ctx.arc(bobberX, bobberY - 4, 4, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = "#f2f2ec";
+  ctx.beginPath();
+  ctx.arc(bobberX, bobberY, 4, 0, Math.PI);
+  ctx.fill();
+
+  if (f.phase === "bite") {
+    ctx.fillStyle = "#e84f4f";
+    ctx.font = "bold 20px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("!", bobberX, bobberY - 16);
+    ctx.textAlign = "left";
   }
 }
 
@@ -425,6 +496,33 @@ function drawSwordSwing(ctx, player) {
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 0.75, startAngle, sweepAngle);
   ctx.stroke();
+  ctx.restore();
+}
+
+const TOOL_SWING_DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+// The axe/pickaxe lunges forward toward the tile being worked and eases
+// back, growing then shrinking over TOOL_SWING_ANIM_MS.
+function drawToolSwing(ctx, player) {
+  const now = performance.now();
+  const t = Math.min(1, (now - player.lastToolSwingAt) / TOOL_SWING_ANIM_MS);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.55;
+  const iconX = cx + dx * (TILE_SIZE * 0.25 + lunge);
+  const iconY = cy + dy * (TILE_SIZE * 0.25 + lunge);
+  const swingAngle = (dx !== 0 ? Math.PI / 2 : 0) + (t - 0.5) * 1.2;
+
+  ctx.save();
+  ctx.globalAlpha = 1 - t * 0.3;
+  ctx.translate(iconX, iconY);
+  ctx.rotate(swingAngle);
+  if (player.toolSwingType === "pickaxe") {
+    drawPickaxeIcon(ctx, 0, 0, TILE_SIZE * 0.8);
+  } else {
+    drawAxeIcon(ctx, 0, 0, TILE_SIZE * 0.8);
+  }
   ctx.restore();
 }
 
@@ -578,6 +676,21 @@ function drawFieldMonster(ctx, monster) {
   }
 
   ctx.textAlign = "left";
+}
+
+// A rabbit is just a small tan critter sprite - no HP bar, level, or alert
+// icon, since it never fights back and can only be caught via a trap.
+function drawRabbit(ctx, animal) {
+  drawMonsterSprite(ctx, animal.pixelX, animal.pixelY, "#cbb89a", animal.dir, 9, animal.moving, false);
+  const u = PX_UNIT;
+  const baseY = Math.round(animal.pixelY + TILE_SIZE - 2 * u);
+  const cx = Math.round(animal.pixelX + TILE_SIZE / 2);
+  ctx.fillStyle = "#cbb89a";
+  ctx.fillRect(cx - 3 * u, baseY - 9 * u, u, 3 * u);
+  ctx.fillRect(cx + 2 * u, baseY - 9 * u, u, 3 * u);
+  ctx.fillStyle = "#e8d9c5";
+  ctx.fillRect(cx - 3 * u, baseY - 9 * u, u, u);
+  ctx.fillRect(cx + 2 * u, baseY - 9 * u, u, u);
 }
 
 // Small pixel-fantasy humanoid, built on an 8x10-unit grid (unit = TILE_SIZE

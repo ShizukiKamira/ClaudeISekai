@@ -12,6 +12,7 @@ function createInitialState() {
     map: buildMap(),
     npcs: NPCS,
     monsters: [],
+    animals: [],
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -30,6 +31,8 @@ function createInitialState() {
     craftScroll: 0,
     location: "overworld", // overworld | home
     exteriorSnapshot: null, // set while indoors: { map, npcs, monsters, itemPickups, placedObjects, returnX, returnY, returnDir }
+    resourceHits: {}, // "x,y" -> hit count so far, for trees/boulders mid-chop/mine
+    fishing: { active: false },
     shop: { mode: "buy", filterIndex: 0, cursor: 0 },
     shopFlashMessage: "",
     shopFlashUntil: 0,
@@ -44,6 +47,7 @@ function createInitialState() {
     uiHitboxes: {},
   };
   spawnInitialMonsters(state, INITIAL_FIELD_MONSTERS);
+  spawnInitialRabbits(state, RABBIT_LIMIT);
   return state;
 }
 
@@ -110,8 +114,22 @@ canvas.addEventListener("click", (e) => {
   };
 });
 
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  Input.wheelDelta += e.deltaY;
+}, { passive: false });
+
 function pointInRect(px, py, box) {
   return px >= box.x && px <= box.x + box.w && py >= box.y && py <= box.y + box.h;
+}
+
+// Converts a click's canvas-pixel position into the world tile it landed on,
+// accounting for the current camera scroll.
+function screenToTile(clickPos) {
+  return {
+    x: Math.floor((clickPos.x + Camera.x) / TILE_SIZE),
+    y: Math.floor((clickPos.y + Camera.y) / TILE_SIZE),
+  };
 }
 
 const Camera = { x: 0, y: 0 };
@@ -246,12 +264,17 @@ function updateClassSelect() {
 
 function updateOverworld(dt) {
   updateMonsterAnimations(state, dt);
+  updateAnimalAnimations(state, dt);
   if (Dialogue.active) {
     Dialogue.update();
     return;
   }
   if (state.placingItem) {
     updatePlacing(dt);
+    return;
+  }
+  if (state.fishing.active) {
+    updateFishing(state, dt);
     return;
   }
 
@@ -318,19 +341,44 @@ function updateOverworld(dt) {
       state.craftCursor = 0;
     } else if (placedAtTarget && placedAtTarget.type === "bed") {
       handleBedInteract(state);
+    } else if (placedAtTarget && placedAtTarget.type === "basic_trap") {
+      handleTrapInteract(state, placedAtTarget);
     } else if (placedAtTarget && HOME_FLAVOR_TEXT[placedAtTarget.type]) {
       Dialogue.show([HOME_FLAVOR_TEXT[placedAtTarget.type]]);
     } else {
       const tile = state.map[target.y] && state.map[target.y][target.x];
       if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
-        handleChopTree(state, target.x, target.y);
+        hitResourceNode(state, target.x, target.y, TILE.TREE);
       } else if (tile === TILE.ROCK) {
-        handleMineBoulder(state, target.x, target.y);
+        hitResourceNode(state, target.x, target.y, TILE.ROCK);
       } else if (tile === TILE.HERB) {
         handleGatherHerb(state, target.x, target.y);
       } else if (tile === TILE.MOONLEAF) {
         handleGatherMoonleaf(state, target.x, target.y);
+      } else if (tile === TILE.WATER) {
+        handleDrinkWater(state);
       }
+    }
+  }
+
+  // Mouse: clicking the tree/boulder directly ahead (with the right tool)
+  // chops/mines it; any other click on the world swings a melee attack, so
+  // combat and gathering both work without touching the keyboard.
+  if (Input.clickPos && !facingFurnace && !Dialogue.active) {
+    const clicked = screenToTile(Input.clickPos);
+    const facingTileType = state.map[target.y] && state.map[target.y][target.x];
+    const clickedFacingTile = clicked.x === target.x && clicked.y === target.y;
+    if (clickedFacingTile && facingTileType === TILE.TREE && !isBorderTile(target.x, target.y) && hasItem(state, "axe")) {
+      hitResourceNode(state, target.x, target.y, TILE.TREE);
+      Input.clickPos = null;
+    } else if (clickedFacingTile && facingTileType === TILE.ROCK && hasItem(state, "pickaxe")) {
+      hitResourceNode(state, target.x, target.y, TILE.ROCK);
+      Input.clickPos = null;
+    } else if (clickedFacingTile && facingTileType === TILE.WATER && hasItem(state, "fishing_rod")) {
+      startFishing(state, target.x, target.y);
+    } else {
+      tryPlayerAttack(state);
+      Input.clickPos = null;
     }
   }
 }
@@ -355,6 +403,7 @@ function enterOrExitHome(state) {
       map: state.map,
       npcs: state.npcs,
       monsters: state.monsters,
+      animals: state.animals,
       itemPickups: state.itemPickups,
       placedObjects: state.placedObjects,
       returnX: HOME_EXTERIOR.doorX,
@@ -364,6 +413,7 @@ function enterOrExitHome(state) {
     state.map = HOME_MAP;
     state.npcs = [];
     state.monsters = [];
+    state.animals = [];
     state.itemPickups = [];
     state.placedObjects = HOME_FURNITURE.map((f) => ({ ...f }));
     state.location = "home";
@@ -373,6 +423,7 @@ function enterOrExitHome(state) {
     state.map = snap.map;
     state.npcs = snap.npcs;
     state.monsters = snap.monsters;
+    state.animals = snap.animals;
     state.itemPickups = snap.itemPickups;
     state.placedObjects = snap.placedObjects;
     state.location = "overworld";
@@ -581,7 +632,7 @@ function renderNightOverlay(state) {
 
 function renderHud() {
   const p = state.player;
-  const boxX = 8, boxY = 8, boxW = 210, boxH = 100;
+  const boxX = 8, boxY = 8, boxW = 210, boxH = 140;
   ctx.fillStyle = "rgba(10,14,12,0.78)";
   ctx.fillRect(boxX, boxY, boxW, boxH);
   ctx.strokeStyle = "#e8c97a";
@@ -614,6 +665,17 @@ function renderHud() {
 
   ctx.fillText(`EXP ${p.exp}/${p.expToNext}`, innerX, sy);
   drawBar(ctx, innerX, sy + 3, barW, 7, p.exp / p.expToNext, "#8e6fce");
+  sy += 22;
+
+  ctx.font = "10px 'Segoe UI', sans-serif";
+  ctx.fillStyle = p.hunger <= 0 ? "#e88a5a" : "#f2f2ec";
+  ctx.fillText(`Hunger ${Math.ceil(p.hunger)}/${HUNGER_MAX}`, innerX, sy);
+  drawBar(ctx, innerX, sy + 3, barW, 6, p.hunger / HUNGER_MAX, "#c9a03a");
+  sy += 17;
+
+  ctx.fillStyle = p.thirst <= 0 ? "#e88a5a" : "#f2f2ec";
+  ctx.fillText(`Thirst ${Math.ceil(p.thirst)}/${THIRST_MAX}`, innerX, sy);
+  drawBar(ctx, innerX, sy + 3, barW, 6, p.thirst / THIRST_MAX, "#4f8dae");
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
