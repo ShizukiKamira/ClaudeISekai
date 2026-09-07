@@ -53,8 +53,14 @@ function updateInventoryTab(state) {
   if (Input.clickPos) {
     const slotHit = (state.uiHitboxes.invSlots || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
     if (slotHit) {
-      state.menuCursor = slotHit.idx;
-      useOrEquipItem(state, items[slotHit.idx].item);
+      // First click on a slot just selects it (matches keyboard browsing);
+      // a second click on the already-selected slot uses/equips it - so a
+      // stray click doesn't instantly drink a potion you meant to inspect.
+      if (state.menuCursor === slotHit.idx) {
+        useOrEquipItem(state, items[slotHit.idx].item);
+      } else {
+        state.menuCursor = slotHit.idx;
+      }
       Input.clickPos = null;
     }
   }
@@ -135,6 +141,30 @@ function drawSwordIcon(ctx, cx, cy, s) {
   ctx.arc(0, s * 0.42, s * 0.06, 0, Math.PI * 2);
   ctx.fillStyle = "#c7a75f";
   ctx.fill();
+
+  ctx.restore();
+}
+
+function drawDaggerIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 4);
+
+  ctx.fillStyle = "#e8e2d0";
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.05, -s * 0.3);
+  ctx.lineTo(s * 0.05, -s * 0.3);
+  ctx.lineTo(s * 0.02, -s * 0.4);
+  ctx.lineTo(0, -s * 0.46);
+  ctx.lineTo(-s * 0.02, -s * 0.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillRect(-s * 0.05, -s * 0.3, s * 0.1, s * 0.36);
+
+  ctx.fillStyle = "#6b4a2f";
+  ctx.fillRect(-s * 0.14, s * 0.06, s * 0.28, s * 0.06);
+  ctx.fillStyle = "#3a2e17";
+  ctx.fillRect(-s * 0.04, s * 0.1, s * 0.08, s * 0.16);
 
   ctx.restore();
 }
@@ -487,6 +517,9 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
     case "iron_sword":
     case "bronze_sword":
       drawSwordIcon(ctx, cx, cy, s);
+      break;
+    case "wolf_dagger":
+      drawDaggerIcon(ctx, cx, cy, s);
       break;
     case "wooden_staff":
       drawStaffIcon(ctx, cx, cy, s, "#7aa9c9");

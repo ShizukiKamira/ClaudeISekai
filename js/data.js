@@ -237,6 +237,14 @@ const ITEMS = {
     defBonus: 3,
     value: 50,
   },
+  wolf_dagger: {
+    name: "Wolf Fang Dagger",
+    desc: "A quick blade carved around a Shade Wolf's fang. +7 ATK. Crafting Table only.",
+    type: "weapon",
+    category: "weapons",
+    atkBonus: 7,
+    value: 55,
+  },
   slime_gel: {
     name: "Slime Gel",
     desc: "Cool, faintly glowing residue. Useful to alchemists, apparently.",
@@ -426,6 +434,38 @@ const CRAFTING_RECIPES = [
     ingredients: [
       { item: "iron_ingot", qty: 2 },
       { item: "log", qty: 1 },
+    ],
+  },
+  {
+    id: "potion_brew",
+    name: "Potion",
+    result: "potion",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "slime_gel", qty: 2 },
+    ],
+  },
+  {
+    id: "hi_potion_brew",
+    name: "Hi-Potion",
+    result: "hi_potion",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "slime_gel", qty: 2 },
+      { item: "wolf_fang", qty: 1 },
+    ],
+  },
+  {
+    id: "wolf_dagger_crafted",
+    name: "Wolf Fang Dagger",
+    result: "wolf_dagger",
+    resultQty: 1,
+    requiresTable: true,
+    ingredients: [
+      { item: "wolf_fang", qty: 2 },
+      { item: "stick", qty: 1 },
     ],
   },
 ];

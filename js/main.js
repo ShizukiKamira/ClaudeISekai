@@ -90,8 +90,11 @@ function loadGame(s) {
 
 const canvas = document.getElementById("game-canvas");
 const ctx = canvas.getContext("2d");
+// Setting canvas.width/height resets the 2D context state, so disable
+// smoothing (for a crisp pixel-fantasy look) only after resizing.
 canvas.width = VIEWPORT_COLS * TILE_SIZE;
 canvas.height = VIEWPORT_ROWS * TILE_SIZE;
+ctx.imageSmoothingEnabled = false;
 
 canvas.addEventListener("click", (e) => {
   const rect = canvas.getBoundingClientRect();
@@ -292,6 +295,11 @@ function updateOverworld(dt) {
       }
     } else if (placedAtTarget && placedAtTarget.type === "campfire") {
       handleCampfireInteract(state);
+    } else if (placedAtTarget && placedAtTarget.type === "crafting_table") {
+      state.mode = "MENU";
+      state.menuTab = "crafting";
+      state.menuCursor = 0;
+      state.craftCursor = 0;
     } else {
       const tile = state.map[target.y] && state.map[target.y][target.x];
       if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
@@ -507,6 +515,7 @@ function renderHud() {
   ctx.fillRect(boxX, boxY, boxW, boxH);
   ctx.strokeStyle = "#e8c97a";
   ctx.strokeRect(boxX, boxY, boxW, boxH);
+  drawPixelFrameCorners(ctx, boxX, boxY, boxW, boxH, 10, "#e8c97a");
 
   const innerX = boxX + 10;
   const barW = boxW - 20;
@@ -585,6 +594,7 @@ function renderMenu() {
   ctx.fillRect(panelX, panelY, panelW, panelH);
   ctx.strokeStyle = "#e8c97a";
   ctx.strokeRect(panelX, panelY, panelW, panelH);
+  drawPixelFrameCorners(ctx, panelX, panelY, panelW, panelH, 16, "#e8c97a");
 
   ctx.font = "bold 20px 'Segoe UI', sans-serif";
   let tabX = 90;

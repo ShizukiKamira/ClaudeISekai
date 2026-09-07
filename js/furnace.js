@@ -61,6 +61,7 @@ function renderFurnaceUI(ctx, state, canvasW, canvasH) {
   ctx.fillRect(panelX, panelY, panelW, panelH);
   ctx.strokeStyle = "#e8c97a";
   ctx.strokeRect(panelX, panelY, panelW, panelH);
+  drawPixelFrameCorners(ctx, panelX, panelY, panelW, panelH, 16, "#e8c97a");
 
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 20px 'Segoe UI', sans-serif";

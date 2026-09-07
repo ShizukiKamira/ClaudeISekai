@@ -44,6 +44,7 @@ const Dialogue = {
     ctx.strokeStyle = "#e8c97a";
     ctx.lineWidth = 2;
     ctx.strokeRect(16, boxY, canvasW - 32, boxH);
+    drawPixelFrameCorners(ctx, 16, boxY, canvasW - 32, boxH, 14, "#e8c97a");
 
     if (this.speaker) {
       ctx.fillStyle = "#e8c97a";
