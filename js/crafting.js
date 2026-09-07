@@ -83,12 +83,27 @@ function renderCraftingTab(ctx, state, x, y, w, h) {
   const cardW = Math.floor((leftW - cardGap * (cols - 1)) / cols);
   const cardH = 82;
 
+  // Reserve a line at the bottom for the hint text so the card grid never
+  // grows into it - instead, once more rows exist than fit, the list
+  // scrolls (auto-following the selection) rather than overflowing.
+  const hintH = 22;
+  const gridH = h - hintH;
+  const visibleRows = Math.max(1, Math.floor((gridH + cardGap) / (cardH + cardGap)));
+  const totalRows = Math.max(1, Math.ceil(recipes.length / cols));
+  const cursorRow = Math.floor(state.craftCursor / cols);
+  let scroll = state.craftScroll || 0;
+  if (cursorRow < scroll) scroll = cursorRow;
+  if (cursorRow > scroll + visibleRows - 1) scroll = cursorRow - visibleRows + 1;
+  scroll = Math.max(0, Math.min(scroll, Math.max(0, totalRows - visibleRows)));
+  state.craftScroll = scroll;
+
   state.uiHitboxes.craftCards = [];
   recipes.forEach((recipe, i) => {
     const col = i % cols;
     const row = Math.floor(i / cols);
+    if (row < scroll || row >= scroll + visibleRows) return;
     const cx0 = x + col * (cardW + cardGap);
-    const cy = y + row * (cardH + cardGap);
+    const cy = y + (row - scroll) * (cardH + cardGap);
     state.uiHitboxes.craftCards.push({ idx: i, x: cx0, y: cy, w: cardW, h: cardH });
     const selected = state.craftCursor === i;
     ctx.fillStyle = selected ? "rgba(232,201,122,0.18)" : "rgba(20,28,20,0.75)";
@@ -123,6 +138,16 @@ function renderCraftingTab(ctx, state, x, y, w, h) {
     ctx.font = "13px 'Segoe UI', sans-serif";
     ctx.fillText("No recipes known yet.", x, y + 20);
   }
+
+  // Scroll indicators, only shown when there's more content in that direction.
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 12px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  if (scroll > 0) ctx.fillText("▲", x + leftW / 2, y - 4);
+  if (scroll + visibleRows < totalRows) {
+    ctx.fillText("▼", x + leftW / 2, y + visibleRows * (cardH + cardGap) + 4);
+  }
+  ctx.textAlign = "left";
 
   const nearTable = isNearCraftingTable(state);
   const hasHiddenTableRecipes = !nearTable && CRAFTING_RECIPES.some((r) => r.requiresTable);

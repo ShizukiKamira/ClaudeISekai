@@ -27,6 +27,7 @@ function createInitialState() {
     menuFlashMessage: "",
     menuFlashUntil: 0,
     craftCursor: 0,
+    craftScroll: 0,
     shop: { mode: "buy", filterIndex: 0, cursor: 0 },
     shopFlashMessage: "",
     shopFlashUntil: 0,
