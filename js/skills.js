@@ -148,6 +148,103 @@ function renderHotbarRow(ctx, state, x, y, slotSize, hitboxKey) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Hotbar drag-and-drop: dragging a consumable from the inventory grid onto a
+// hotbar slot assigns it there; dragging directly from one hotbar slot to
+// another moves it (not just inventory-grid -> hotbar); a plain click
+// (down+up with barely any movement) on an already-assigned slot removes
+// it. The same item can never occupy two hotbar slots at once - assigning
+// or moving one clears any other slot that already held it.
+// ---------------------------------------------------------------------------
+
+const DRAG_CLICK_THRESHOLD = 6; // px - below this, a mousedown+up counts as a click, not a drag
+
+function hotbarSlotAt(hitboxList, x, y) {
+  return (hitboxList || []).find((b) => pointInRect(x, y, b)) || null;
+}
+
+function clearHotbarDuplicates(player, itemId, exceptIdx) {
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (i !== exceptIdx && player.hotbar[i] === itemId) player.hotbar[i] = null;
+  }
+}
+
+function assignHotbarSlot(state, slotIdx, itemId) {
+  clearHotbarDuplicates(state.player, itemId, slotIdx);
+  state.player.hotbar[slotIdx] = itemId;
+}
+
+function startHotbarDrag(state, invItems, invHitboxKey, hotbarHitboxKey) {
+  // Deliberately keyed off mouseDownPos (which persists across frames until
+  // this same flow clears it) rather than the momentary mouseIsDown flag -
+  // a fast click can see its mousedown AND mouseup both land between two
+  // polls of the game loop, in which case mouseIsDown would already be back
+  // to false by the time this runs, and the drag/click would never resolve.
+  if (state.dragging || !Input.mouseDownPos) return;
+  const invHit = hotbarSlotAt(state.uiHitboxes[invHitboxKey], Input.mouseDownPos.x, Input.mouseDownPos.y);
+  if (invHit && invItems[invHit.idx] && ITEMS[invItems[invHit.idx].item].type === "consumable") {
+    state.dragging = { from: "inv", idx: invHit.idx, itemId: invItems[invHit.idx].item };
+    return;
+  }
+  const hotHit = hotbarSlotAt(state.uiHitboxes[hotbarHitboxKey], Input.mouseDownPos.x, Input.mouseDownPos.y);
+  const cur = hotHit && state.player.hotbar[hotHit.idx];
+  if (hotHit && cur && ITEMS[cur] && ITEMS[cur].type === "consumable") {
+    state.dragging = { from: "hotbar", idx: hotHit.idx, itemId: cur };
+  }
+}
+
+function updateHotbarDrag(state, invItems, invHitboxKey, hotbarHitboxKey) {
+  startHotbarDrag(state, invItems, invHitboxKey, hotbarHitboxKey);
+
+  if (state.dragging && Input.mouseUpPos) {
+    const d = state.dragging;
+    state.dragging = null;
+    const downPos = Input.mouseDownPos;
+    const upPos = Input.mouseUpPos;
+    const movedFar = !downPos || Math.hypot(upPos.x - downPos.x, upPos.y - downPos.y) > DRAG_CLICK_THRESHOLD;
+
+    if (d.from === "hotbar" && !movedFar) {
+      state.player.hotbar[d.idx] = null; // a plain click on an assigned slot removes it
+    } else {
+      const hotHit = hotbarSlotAt(state.uiHitboxes[hotbarHitboxKey], upPos.x, upPos.y);
+      if (hotHit && !(d.from === "hotbar" && hotHit.idx === d.idx)) {
+        assignHotbarSlot(state, hotHit.idx, d.itemId);
+      }
+      // dropped outside any hotbar slot (or back on its own slot after
+      // moving) - cancel, leaving everything unchanged.
+    }
+  }
+  if (Input.mouseUpPos) Input.mouseDownPos = null;
+}
+
+// Drawn on top of the Inventory tab: the dragged item's icon follows the
+// cursor, and whichever slot it's currently over glows yellow (a hotbar
+// slot - a valid drop) or red (an equipment slot - never a valid drop for a
+// dragged consumable).
+function renderHotbarDragOverlay(ctx, state, hotbarHitboxKey) {
+  const d = state.dragging;
+  if (!d) return;
+  const mx = Input.mousePos.x, my = Input.mousePos.y;
+
+  const hotHit = hotbarSlotAt(state.uiHitboxes[hotbarHitboxKey], mx, my);
+  const equipHit = !hotHit && hotbarSlotAt(state.uiHitboxes.equipSlots, mx, my);
+  const target = hotHit || equipHit;
+  if (target) {
+    ctx.save();
+    ctx.strokeStyle = hotHit ? "#f6d97a" : "#e84f4f";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = hotHit ? "rgba(246,217,122,0.9)" : "rgba(232,79,79,0.9)";
+    ctx.shadowBlur = 10;
+    ctx.strokeRect(target.x - 1, target.y - 1, target.w + 2, target.h + 2);
+    ctx.restore();
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  drawItemSlot(ctx, mx - 22, my - 22, 44, { item: d.itemId, qty: 1 }, false);
+  ctx.restore();
+}
+
 function renderHotbar(ctx, state) {
   const slotSize = 34;
   const gap = 6;

@@ -25,6 +25,7 @@ const TILE = {
   FLOOR: 13,
   RUG: 14,
   BUSH: 15,
+  SAND: 16,
 };
 
 const SOLID_TILES = new Set([TILE.TREE, TILE.WATER, TILE.ROCK, TILE.WALL, TILE.ROOF, TILE.BUSH]);
@@ -124,6 +125,12 @@ function buildMap() {
   // "Forage" popup for sticks, stones, herbs, and berries
   for (let i = 0; i < 22; i++) {
     grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.BUSH;
+  }
+
+  // Sand patches - forageable for the potion-bottle economy (fired into an
+  // Empty Flask at a furnace)
+  for (let i = 0; i < 20; i++) {
+    grid[randInt(2, MAP_ROWS - 3)][randInt(2, MAP_COLS - 3)] = TILE.SAND;
   }
 
   // Path from the player's landing spot to the shrine clearing
@@ -293,8 +300,24 @@ const ITEMS = {
     value: 15,
     leavesFlask: true,
   },
-  hi_potion: { name: "Hi-Potion", desc: "Restores 80 HP.", type: "consumable", category: "items", heal: 80, value: 45 },
-  ether: { name: "Ether", desc: "Restores 20 MP.", type: "consumable", category: "items", restoreMp: 20, value: 20 },
+  hi_potion: {
+    name: "Hi-Potion",
+    desc: "Restores 80 HP. Leaves behind an Empty Flask you can refill with water.",
+    type: "consumable",
+    category: "items",
+    heal: 80,
+    value: 45,
+    leavesFlask: true,
+  },
+  ether: {
+    name: "Ether",
+    desc: "Restores 20 MP. Leaves behind an Empty Flask you can refill with water.",
+    type: "consumable",
+    category: "items",
+    restoreMp: 20,
+    value: 20,
+    leavesFlask: true,
+  },
   gold: { name: "Gold", desc: "Currency of no world in particular.", type: "currency", category: "misc" },
   iron_sword: {
     name: "Iron Sword",
@@ -563,10 +586,17 @@ const ITEMS = {
   },
   empty_flask: {
     name: "Empty Flask",
-    desc: "A glass flask, empty after you drank the potion inside. Face a lake or pond and interact to fill it with water.",
+    desc: "A glass flask, empty after you drank the potion inside. Face a lake or pond and interact to fill it with water, or hand it over as the bottle a Crafting Table potion recipe needs.",
     type: "tool",
     category: "misc",
-    value: 3,
+    value: 10,
+  },
+  sand: {
+    name: "Sand",
+    desc: "Fine, pale sand. Fired in a furnace, three scoops make a new Empty Flask.",
+    type: "material",
+    category: "ingredients",
+    value: 2,
   },
   dirty_water: {
     name: "Dirty Water",
@@ -664,8 +694,8 @@ const CRAFTING_RECIPES = [
     resultQty: 1,
     requiresTable: true,
     altIngredients: [
-      [{ item: "slime_gel", qty: 2 }],
-      [{ item: "healing_herb", qty: 3 }],
+      [{ item: "slime_gel", qty: 2 }, { item: "empty_flask", qty: 1 }],
+      [{ item: "healing_herb", qty: 3 }, { item: "empty_flask", qty: 1 }],
     ],
   },
   {
@@ -675,8 +705,8 @@ const CRAFTING_RECIPES = [
     resultQty: 1,
     requiresTable: true,
     altIngredients: [
-      [{ item: "slime_gel", qty: 2 }, { item: "wolf_fang", qty: 1 }],
-      [{ item: "healing_herb", qty: 2 }, { item: "moonleaf", qty: 1 }],
+      [{ item: "slime_gel", qty: 2 }, { item: "wolf_fang", qty: 1 }, { item: "empty_flask", qty: 1 }],
+      [{ item: "healing_herb", qty: 2 }, { item: "moonleaf", qty: 1 }, { item: "empty_flask", qty: 1 }],
     ],
   },
   {
@@ -687,6 +717,7 @@ const CRAFTING_RECIPES = [
     requiresTable: true,
     ingredients: [
       { item: "moonleaf", qty: 2 },
+      { item: "empty_flask", qty: 1 },
     ],
   },
   {
@@ -737,7 +768,7 @@ const CRAFTING_RECIPES = [
 const MERCHANT_STOCK = [
   "potion", "hi_potion", "ether", "iron_sword", "bronze_sword", "wooden_staff", "magic_staff_1", "traveler_charm",
   "stick", "flint", "log", "stone", "iron_ore", "copper_ore", "axe", "pickaxe", "bridge",
-  "furnace", "iron_ingot", "copper_ingot", "crafting_table", "basic_trap", "fishing_rod", "chest",
+  "furnace", "iron_ingot", "copper_ingot", "crafting_table", "basic_trap", "fishing_rod", "chest", "empty_flask",
 ];
 
 const ITEM_CATEGORIES = [
@@ -894,8 +925,48 @@ const INITIAL_FIELD_MONSTERS = 3;
 // ---------------------------------------------------------------------------
 
 const PLAYER_MOVE_SPEED = 150; // px/s, was 220 - slower for reaction time
-const MONSTER_MOVE_SPEED = 130; // px/s, was 260
+const MONSTER_MOVE_SPEED = 95; // px/s - slower than the player, but free-roaming/diagonal now
 const ATTACK_COOLDOWN_MS = 500;
+
+// ---------------------------------------------------------------------------
+// Free (non-tile) movement: player/monsters move continuously in any of 8
+// directions and collide with the map as a circle rather than snapping
+// between tile centers. tileX/tileY are still derived every frame (floor of
+// the entity's center point) so range/lookup code elsewhere keeps working.
+// ---------------------------------------------------------------------------
+
+const PLAYER_RADIUS = TILE_SIZE * 0.32;
+const MONSTER_RADIUS = TILE_SIZE * 0.3;
+const COMBAT_CONTACT_GAP = 4; // extra px of buffer added to radius-sum contact checks
+
+// Melee/ranged attacks aim along a continuous angle (toward the mouse)
+// instead of snapping to 4 cardinal directions, so swings/fireballs can fire
+// diagonally. MELEE_HALF_ANGLE spans the same 120-degree cone the old 3-tile
+// hitbox covered.
+const MELEE_RANGE = TILE_SIZE * 1.55;
+const MELEE_HALF_ANGLE = Math.PI / 3;
+
+// ---------------------------------------------------------------------------
+// Dash: up to DASH_MAX_CHARGES uses, each charge recharging independently
+// over DASH_RECHARGE_MS. Travels DASH_DISTANCE, animated (not instant) over
+// DASH_DURATION_MS, in whichever movement direction is held alongside Q (or
+// the player's current facing if none is held).
+// ---------------------------------------------------------------------------
+
+const DASH_MAX_CHARGES = 3;
+const DASH_RECHARGE_MS = 15000;
+const DASH_DISTANCE = TILE_SIZE * 3;
+const DASH_DURATION_MS = 160;
+
+// ---------------------------------------------------------------------------
+// Monster corpses: a defeated monster/rabbit drops its item loot as a corpse
+// in the world instead of straight into the inventory. A "Loot" popup near
+// it loots everything at once; clicking the corpse directly opens a panel to
+// choose individual items. Unlooted corpses fade away after a while.
+// ---------------------------------------------------------------------------
+
+const CORPSE_LOOT_RANGE = TILE_SIZE * 1.4;
+const CORPSE_DESPAWN_MS = 90000;
 const SWING_ANIM_MS = 220; // how long the melee swing arc animates for
 const STAFF_SWING_ANIM_MS = 260; // how long a staff bonk/thrust animates for
 const FIST_SWING_ANIM_MS = 160; // how long a barehanded jab animates for
@@ -965,21 +1036,31 @@ const RABBIT_MAX_HP = 14; // low HP so it still dies fast, but takes real hits l
 const INTERACT_CLICK_RANGE = 4;
 
 // ---------------------------------------------------------------------------
-// Foraging: bushes offer a clickable "Forage" popup for a small random
-// assortment of sticks, stones, herbs, and berries.
+// Foraging: standing near a bush, herb patch, moonleaf patch, or sand patch
+// offers a clickable "Forage" popup. Each source has its own loot table and
+// roll range; every forage also has a separate chance of a bonus Stick
+// and/or Flint on top of its normal drops.
 // ---------------------------------------------------------------------------
 
-const FORAGE_LOOT_TABLE = ["stick", "stone", "healing_herb", "berry"];
+const FORAGE_SOURCES = {
+  [TILE.BUSH]: { table: ["stick", "stone", "healing_herb", "berry"], minRolls: 1, maxRolls: 2 },
+  [TILE.HERB]: { table: ["healing_herb"], minRolls: 1, maxRolls: 1 },
+  [TILE.MOONLEAF]: { table: ["moonleaf"], minRolls: 1, maxRolls: 1 },
+  [TILE.SAND]: { table: ["sand"], minRolls: 1, maxRolls: 2 },
+};
+const FORAGE_BONUS_CHANCE = 0.35; // independent chance of a bonus Stick, and again for a bonus Flint
 
 // ---------------------------------------------------------------------------
-// Fishing: cast at a facing water tile with a Fishing Rod, wait for a bite,
-// then click or press F within the reaction window to land the catch.
+// Fishing: standing near water with a Fishing Rod shows a "Press F to fish"
+// prompt. F casts and, after a short wait, starts a minigame - hold Up/Down
+// (or W/S) to move a green catch-box and keep the fish inside it. The fish
+// drifts on its own, more erratically for a bigger/rarer catch; staying on
+// it fills a progress meter, drifting off it drains that meter.
 // ---------------------------------------------------------------------------
 
 const FISH_CAST_MS = 500; // line-toss animation before the bobber settles
-const FISH_WAIT_MIN_MS = 1800;
-const FISH_WAIT_MAX_MS = 4500;
-const FISH_BITE_WINDOW_MS = 1400; // time to react once the "!" appears
+const FISH_WAIT_MIN_MS = 900;
+const FISH_WAIT_MAX_MS = 2200;
 
 const FISH_RARITY_TABLE = [
   { id: "fish_small", weight: 50 },
@@ -988,6 +1069,21 @@ const FISH_RARITY_TABLE = [
   { id: "fish_extra_large", weight: 9 },
   { id: "fish_golden", weight: 6 },
 ];
+
+// Difficulty 0..1 - how fast/erratically the fish drifts in the minigame bar.
+const FISH_DIFFICULTY = {
+  fish_small: 0.28,
+  fish_medium: 0.48,
+  fish_large: 0.68,
+  fish_extra_large: 0.85,
+  fish_golden: 1,
+};
+
+const FISH_MINIGAME_BAR_HEIGHT = 240; // px, screen space
+const FISH_MINIGAME_BOX_HEIGHT_FRAC = 0.28; // fraction of the bar the catch-box covers
+const FISH_MINIGAME_BOX_SPEED = 1.5; // fraction of the bar per second while held
+const FISH_MINIGAME_FILL_RATE = 0.5; // progress per second while the fish is inside the box
+const FISH_MINIGAME_DRAIN_RATE = 0.28; // progress per second while the fish is outside the box
 
 function rollFishCatch() {
   const roll = Math.random() * 100;

@@ -7,6 +7,7 @@ const SMELTING_RECIPES = [
   { id: "iron_ingot", name: "Iron Ingot", result: "iron_ingot", resultQty: 1, ore: "iron_ore", oreQty: 1 },
   { id: "copper_ingot", name: "Copper Ingot", result: "copper_ingot", resultQty: 1, ore: "copper_ore", oreQty: 1 },
   { id: "purified_water", name: "Purified Water", result: "purified_water", resultQty: 1, ore: "dirty_water", oreQty: 1, verb: "Boiled" },
+  { id: "empty_flask_fired", name: "Empty Flask", result: "empty_flask", resultQty: 1, ore: "sand", oreQty: 3, verb: "Fired" },
 ];
 const FURNACE_FUEL_ITEMS = ["log", "stick"];
 

@@ -78,23 +78,23 @@ function updatePoisoning(state) {
   }
 }
 
-// The tile directly ahead of the player, plus the tile on either side of
-// it (perpendicular to facing direction), for a 3-tile-wide sword swing.
-function meleeHitTiles(player) {
-  const target = facingTile(player);
-  const facingHorizontally = target.x !== player.tileX;
-  if (facingHorizontally) {
-    return [
-      { x: target.x, y: target.y - 1 },
-      { x: target.x, y: target.y },
-      { x: target.x, y: target.y + 1 },
-    ];
-  }
-  return [
-    { x: target.x - 1, y: target.y },
-    { x: target.x, y: target.y },
-    { x: target.x + 1, y: target.y },
-  ];
+// Every entity (a monster's tile, or an explicit pixel target) within
+// MELEE_RANGE of the player and inside a MELEE_HALF_ANGLE cone around their
+// continuous facing angle - the free-aim replacement for the old fixed
+// 3-tile-wide line, letting a swing land in any of 8 directions including
+// the diagonals.
+function meleeHitTargets(player, entities, getCenter) {
+  const cx = player.pixelX + TILE_SIZE / 2, cy = player.pixelY + TILE_SIZE / 2;
+  return entities.filter((e) => {
+    const [ex, ey] = getCenter(e);
+    const dx = ex - cx, dy = ey - cy;
+    const d = Math.hypot(dx, dy);
+    if (d > MELEE_RANGE) return false;
+    if (d < 1) return true; // degenerate case: standing exactly on the player
+    let diff = Math.abs(Math.atan2(dy, dx) - player.facingAngle);
+    diff = Math.min(diff, Math.PI * 2 - diff);
+    return diff <= MELEE_HALF_ANGLE;
+  });
 }
 
 // Attacking doesn't move the player, but it still gives monsters a chance
@@ -102,24 +102,30 @@ function meleeHitTiles(player) {
 // letting other monsters wander, spot them, or the day/night clock advance.
 function advanceTurnForAction(state) {
   state.turnCount += 1;
-  updateMonstersTurn(state);
+  tryMonsterSpawn(state);
+  tryRabbitSpawn(state);
 }
 
-// Turns the player to face whichever cardinal direction the mouse cursor
-// currently sits in, relative to their own tile - called right before an
-// attack resolves so melee and fireball both aim where the player is
-// pointing rather than only their last movement direction.
+// Points the player's continuous facing angle straight at wherever the
+// mouse cursor currently sits, in world space - called right before an
+// attack resolves so melee and fireball both aim anywhere around the
+// player (including diagonals), not only 4 cardinal directions.
 function aimTowardMouse(state) {
   const p = state.player;
-  const worldTile = screenToTile(Input.mousePos);
-  const dx = worldTile.x - p.tileX;
-  const dy = worldTile.y - p.tileY;
-  if (dx === 0 && dy === 0) return; // mouse is over the player's own tile - keep current facing
-  if (Math.abs(dx) > Math.abs(dy)) {
-    p.dir = dx > 0 ? "right" : "left";
-  } else {
-    p.dir = dy > 0 ? "down" : "up";
+  const worldX = Input.mousePos.x + Camera.x;
+  const worldY = Input.mousePos.y + Camera.y;
+  const cx = p.pixelX + TILE_SIZE / 2, cy = p.pixelY + TILE_SIZE / 2;
+  const dx = worldX - cx, dy = worldY - cy;
+  if (Math.hypot(dx, dy) < 2) {
+    // Mouse is essentially on the player - keep the current facing, but
+    // resync facingAngle from dir in case something (e.g. a direct
+    // `player.dir = "right"` assignment) set dir alone without it.
+    const [fx, fy] = dir8Vec(p.dir);
+    p.facingAngle = Math.atan2(fy, fx);
+    return;
   }
+  p.facingAngle = Math.atan2(dy, dx);
+  p.dir = angleToDir8(p.facingAngle);
 }
 
 // F always swings a melee attack, regardless of class - a mage's active
@@ -137,12 +143,11 @@ function tryPlayerAttack(state) {
   p.lastAttackAt = now;
   resetOutOfCombat(state);
 
-  // Resolve the swing against monsters' current tiles before letting them
-  // take their turn - otherwise an already-alert adjacent monster can
-  // chase-step diagonally out of the hitbox in the same instant and dodge
-  // a swing it was standing right in front of.
-  const tiles = meleeHitTiles(p);
-  const hits = state.monsters.filter((m) => tiles.some((t) => t.x === m.tileX && t.y === m.tileY));
+  // Resolve the swing against monsters' current positions - the cone check
+  // uses each monster's live pixel center, so free-roaming movement can't
+  // dodge a swing already landing on it.
+  const monsterCenter = (m) => [m.pixelX + TILE_SIZE / 2, m.pixelY + TILE_SIZE / 2];
+  const hits = meleeHitTargets(p, state.monsters, monsterCenter);
   for (const m of hits) {
     const dmg = Math.max(2, playerAtk(p) - m.enemy.def + rollVariance());
     damageMonster(state, m, dmg);
@@ -150,7 +155,7 @@ function tryPlayerAttack(state) {
 
   // Rabbits are unarmored and never fight back, but otherwise take damage
   // just like a field monster - the direct alternative to a loaded trap.
-  const rabbitHits = state.animals.filter((a) => a.kind === "rabbit" && tiles.some((t) => t.x === a.tileX && t.y === a.tileY));
+  const rabbitHits = meleeHitTargets(p, state.animals.filter((a) => a.kind === "rabbit"), monsterCenter);
   for (const a of rabbitHits) {
     const dmg = Math.max(2, playerAtk(p) + rollVariance());
     damageAnimal(state, a, dmg);
@@ -226,12 +231,11 @@ function castHotbarSkill(state, slotIndex) {
 }
 
 function spawnFireball(state, player) {
-  const dirVec = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[player.dir];
   state.projectiles.push({
     x: player.pixelX + TILE_SIZE / 2,
     y: player.pixelY + TILE_SIZE / 2,
-    vx: dirVec[0] * FIREBALL_SPEED,
-    vy: dirVec[1] * FIREBALL_SPEED,
+    vx: Math.cos(player.facingAngle) * FIREBALL_SPEED,
+    vy: Math.sin(player.facingAngle) * FIREBALL_SPEED,
     spawnedAt: performance.now(),
     dmgBase: Math.floor(playerAtk(player) * 1.6),
   });
@@ -320,6 +324,7 @@ function resolveMonsterAttack(state, monster) {
 }
 
 function damageMonster(state, monster, dmg) {
+  if (monster.currentHp <= 0) return; // already dead this tick - never double-process a kill
   resetOutOfCombat(state);
   monster.currentHp = Math.max(0, monster.currentHp - dmg);
   monster.hitFlashUntil = performance.now() + 150;
@@ -328,7 +333,7 @@ function damageMonster(state, monster, dmg) {
   // even if it hadn't spotted the player yet - it comes to fight back.
   if (!monster.alert) {
     monster.alert = true;
-    monster.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
+    monster.chaseTimeLeftMs = (FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1))) * 1000;
   }
   if (monster.currentHp <= 0) {
     defeatMonster(state, monster);
@@ -371,9 +376,13 @@ function defeatMonster(state, monster) {
   state.monsters = state.monsters.filter((m) => m !== monster);
 
   let msg = `Defeated ${enemy.name}! +${enemy.exp} EXP, +${enemy.gold} gold.`;
+  const drops = [];
   if (enemy.drop && Math.random() < enemy.drop.chance) {
-    addItem(state, enemy.drop.item, 1);
-    msg += ` Found ${ITEMS[enemy.drop.item].name}.`;
+    drops.push({ item: enemy.drop.item, qty: 1 });
+  }
+  if (drops.length) {
+    spawnCorpse(state, monster.pixelX + TILE_SIZE / 2, monster.pixelY + TILE_SIZE / 2, drops, `${enemy.name} Corpse`);
+    msg += ` It dropped something - loot the corpse.`;
   }
   if (levelMsgs.length) msg += ` ${levelMsgs[levelMsgs.length - 1]}`;
 

@@ -110,63 +110,32 @@ function tryRabbitSpawn(state) {
   spawnRabbit(state, spot.x, spot.y);
 }
 
-// When no player is nearby, a rabbit just wanders, same cadence as an
-// unaware field monster.
-function wanderAnimal(state, animal) {
-  if (Math.random() >= 0.5) return;
-  const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  const [mx, my] = dirs[Math.floor(Math.random() * dirs.length)];
-  const nx = animal.tileX + mx;
-  const ny = animal.tileY + my;
-  if (isTileFreeForAnimal(state, nx, ny)) {
-    animal.tileX = nx;
-    animal.tileY = ny;
-    animal.moving = true;
-    animal.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
-  }
-}
-
-// A rabbit within RABBIT_NOTICE_RADIUS of the player flees away from it
-// instead of wandering - the mirror image of stepMonsterToward. It never
-// fights back, so the only ways to end up with meat are a loaded trap or
-// catching up to land a direct hit.
-function fleeFromPlayer(state, animal) {
-  const p = state.player;
-  const dx = Math.sign(animal.tileX - p.tileX) || (Math.random() < 0.5 ? 1 : -1);
-  const dy = Math.sign(animal.tileY - p.tileY) || (Math.random() < 0.5 ? 1 : -1);
-  const candidates = [];
-  if (dx !== 0) candidates.push([dx, 0]);
-  if (dy !== 0) candidates.push([0, dy]);
-  if (dy === 0 && dx !== 0) candidates.push([dx, 1], [dx, -1]);
-  if (dx === 0 && dy !== 0) candidates.push([1, dy], [-1, dy]);
-
-  for (const [mx, my] of candidates) {
-    const nx = animal.tileX + mx;
-    const ny = animal.tileY + my;
-    if (isTileFreeForAnimal(state, nx, ny)) {
-      animal.tileX = nx;
-      animal.tileY = ny;
-      animal.moving = true;
-      animal.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
-      return;
-    }
-  }
-}
-
-function stepRabbit(state, animal) {
+// A rabbit within RABBIT_NOTICE_RADIUS of the player flees away from it in
+// a straight continuous line (any of 8 directions) instead of wandering -
+// the mirror image of a monster's chase steering. It never fights back, so
+// the only ways to end up with meat are a loaded trap or catching up to
+// land a direct hit.
+function stepRabbitMovement(state, animal, dt) {
   const p = state.player;
   const dist = chebyshevDist(animal.tileX, animal.tileY, p.tileX, p.tileY);
   if (dist <= RABBIT_NOTICE_RADIUS) {
-    fleeFromPlayer(state, animal);
+    const ax = animal.pixelX + TILE_SIZE / 2, ay = animal.pixelY + TILE_SIZE / 2;
+    const px = p.pixelX + TILE_SIZE / 2, py = p.pixelY + TILE_SIZE / 2;
+    const angle = Math.atan2(ay - py, ax - px);
+    const fleeTargetX = ax + Math.cos(angle) * TILE_SIZE * 3;
+    const fleeTargetY = ay + Math.sin(angle) * TILE_SIZE * 3;
+    moveEntityToward(state, animal, fleeTargetX, fleeTargetY, dt, MONSTER_RADIUS * 0.8, 0);
   } else {
-    wanderAnimal(state, animal);
+    wanderEntity(state, animal, dt, MONSTER_RADIUS * 0.8);
   }
+  updateDerivedTile(animal);
 }
 
 // Damages a rabbit exactly like damageMonster does a field monster (hit
 // flash, floating damage text, HP depletion) - shared by melee swings and
 // fireball hits, the direct alternative to waiting on a loaded trap.
 function damageAnimal(state, animal, dmg) {
+  if (animal.currentHp <= 0) return; // already dead this tick - never double-process a kill
   resetOutOfCombat(state);
   animal.currentHp = Math.max(0, (animal.currentHp ?? RABBIT_MAX_HP) - dmg);
   animal.hitFlashUntil = performance.now() + 150;
@@ -178,8 +147,8 @@ function damageAnimal(state, animal, dmg) {
 
 function killRabbit(state, animal) {
   state.animals = state.animals.filter((a) => a !== animal);
-  addItem(state, "rabbit_meat", 1);
-  state.worldFlashMessage = "You hunted a rabbit! +1 Rabbit Meat";
+  spawnCorpse(state, animal.pixelX + TILE_SIZE / 2, animal.pixelY + TILE_SIZE / 2, [{ item: "rabbit_meat", qty: 1 }], "Rabbit Corpse");
+  state.worldFlashMessage = "You hunted a rabbit! Loot the corpse for meat.";
   state.worldFlashUntil = performance.now() + 1400;
 }
 
@@ -199,30 +168,12 @@ function updateTraps(state) {
   }
 }
 
-function updateAnimalsTurn(state) {
+function updateAnimalsMovement(state, dt) {
   for (const animal of state.animals) {
-    if (animal.kind === "rabbit") stepRabbit(state, animal);
-    else wanderAnimal(state, animal);
-  }
-  updateTraps(state);
-  tryRabbitSpawn(state);
-}
-
-function updateAnimalAnimations(state, dt) {
-  for (const animal of state.animals) {
-    if (!animal.moving) continue;
-    const targetX = animal.tileX * TILE_SIZE;
-    const targetY = animal.tileY * TILE_SIZE;
-    const dx = targetX - animal.pixelX;
-    const dy = targetY - animal.pixelY;
-    const dist = animal.moveSpeed * dt;
-    if (Math.abs(dx) <= dist && Math.abs(dy) <= dist) {
-      animal.pixelX = targetX;
-      animal.pixelY = targetY;
-      animal.moving = false;
-    } else {
-      animal.pixelX += Math.sign(dx) * Math.min(dist, Math.abs(dx));
-      animal.pixelY += Math.sign(dy) * Math.min(dist, Math.abs(dy));
+    if (animal.kind === "rabbit") stepRabbitMovement(state, animal, dt);
+    else {
+      wanderEntity(state, animal, dt, MONSTER_RADIUS * 0.8);
+      updateDerivedTile(animal);
     }
   }
 }

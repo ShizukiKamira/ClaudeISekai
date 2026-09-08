@@ -11,6 +11,7 @@ const Input = {
   rightClickPos: null, // {x, y} for a right-click (context menu) this frame, cleared after the frame
   mouseDownPos: null, // {x, y} set on left-mouse-down this frame, cleared after the frame
   mouseUpPos: null, // {x, y} set on left-mouse-up this frame, cleared after the frame
+  mouseIsDown: false, // true continuously while the left mouse button is held (for drag rendering)
   mousePos: { x: 400, y: 300 }, // continuously-updated cursor position, never cleared
 
   init() {
@@ -49,12 +50,18 @@ const Input = {
     // pairs it with a mouseUpPos (e.g. chest.js's drag handling) clears it.
   },
 
-  moveDirection() {
-    if (this.isDown("ArrowUp") || this.isDown("KeyW")) return { x: 0, y: -1, dir: "up" };
-    if (this.isDown("ArrowDown") || this.isDown("KeyS")) return { x: 0, y: 1, dir: "down" };
-    if (this.isDown("ArrowLeft") || this.isDown("KeyA")) return { x: -1, y: 0, dir: "left" };
-    if (this.isDown("ArrowRight") || this.isDown("KeyD")) return { x: 1, y: 0, dir: "right" };
-    return null;
+  // Combines every held WASD/arrow key into one normalized vector, so
+  // opposite-corner keys (e.g. W+D) produce diagonal movement rather than
+  // only ever the 4 cardinal directions.
+  moveVector() {
+    let x = 0, y = 0;
+    if (this.isDown("ArrowUp") || this.isDown("KeyW")) y -= 1;
+    if (this.isDown("ArrowDown") || this.isDown("KeyS")) y += 1;
+    if (this.isDown("ArrowLeft") || this.isDown("KeyA")) x -= 1;
+    if (this.isDown("ArrowRight") || this.isDown("KeyD")) x += 1;
+    if (x === 0 && y === 0) return null;
+    const len = Math.hypot(x, y);
+    return { x: x / len, y: y / len };
   },
 
   confirmPressed() {

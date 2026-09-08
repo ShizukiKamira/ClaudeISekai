@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
-// Field monsters: roam tall grass, spot the player within their vision,
-// then chase or give up - battle starts on tile contact either way
+// Field monsters: roam tall grass, spot the player within their vision, then
+// chase (free-roaming, in any of 8 directions, slower than the player) or
+// give up - combat starts on proximity contact either way.
 // ---------------------------------------------------------------------------
 
 let fieldMonsterSeq = 0;
@@ -18,7 +19,7 @@ function spawnFieldMonster(state, x, y, speciesId) {
     dir: "down",
     moveSpeed: MONSTER_MOVE_SPEED,
     alert: false,
-    chaseTilesLeft: 0,
+    chaseTimeLeftMs: 0,
     visionRadius: 3 + Math.floor(Math.random() * 2), // 3-4
     currentHp: enemy.hp,
     nextAttackAt: 0,
@@ -39,7 +40,7 @@ function spawnBossMonster(state, x, y) {
     dir: "down",
     moveSpeed: MONSTER_MOVE_SPEED,
     alert: true,
-    chaseTilesLeft: Infinity,
+    chaseTimeLeftMs: Infinity,
     visionRadius: 99,
     currentHp: enemy.hp,
     nextAttackAt: 0,
@@ -96,106 +97,48 @@ function chebyshevDist(ax, ay, bx, by) {
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
-function stepMonsterToward(state, monster, targetX, targetY) {
-  const dx = Math.sign(targetX - monster.tileX);
-  const dy = Math.sign(targetY - monster.tileY);
-  const candidates = [];
-  if (dx !== 0) candidates.push([dx, 0]);
-  if (dy !== 0) candidates.push([0, dy]);
-  // Perpendicular detours so a single blocking tile (a tree, an NPC) doesn't
-  // wall off a straight-line chase entirely.
-  if (dy === 0 && dx !== 0) candidates.push([dx, 1], [dx, -1]);
-  if (dx === 0 && dy !== 0) candidates.push([1, dy], [-1, dy]);
-
-  for (const [mx, my] of candidates) {
-    const nx = monster.tileX + mx;
-    const ny = monster.tileY + my;
-    // Monsters may never step onto the player's own tile - isTileFreeForMonster
-    // already excludes it, so a monster simply stops adjacent to give chase.
-    if (isTileFreeForMonster(state, nx, ny)) {
-      monster.tileX = nx;
-      monster.tileY = ny;
-      monster.moving = true;
-      monster.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
-      return;
-    }
-  }
-}
-
-function wanderMonster(state, monster) {
-  if (Math.random() >= 0.4) return; // usually stays put
-  const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
-  const [mx, my] = dirs[Math.floor(Math.random() * dirs.length)];
-  const nx = monster.tileX + mx;
-  const ny = monster.tileY + my;
-  if (isTileFreeForMonster(state, nx, ny)) {
-    monster.tileX = nx;
-    monster.tileY = ny;
-    monster.moving = true;
-    monster.dir = my === 1 ? "down" : my === -1 ? "up" : mx === 1 ? "right" : "left";
-  }
-}
-
-function stepMonstersOnce(state) {
+// Alert: steers straight toward the player every frame (free-roaming, so it
+// closes the distance diagonally where a straight tile-step chase couldn't),
+// stopping just outside melee contact range rather than stacking on top of
+// the player. Not alert: spots the player by vision radius, or wanders.
+function stepMonsterMovement(state, monster, dt) {
   const p = state.player;
-  for (const monster of state.monsters) {
+  if (monster.alert) {
+    const targetX = p.pixelX + TILE_SIZE / 2, targetY = p.pixelY + TILE_SIZE / 2;
+    const stopDist = PLAYER_RADIUS + MONSTER_RADIUS + COMBAT_CONTACT_GAP;
+    moveEntityToward(state, monster, targetX, targetY, dt, MONSTER_RADIUS, stopDist);
+    monster.chaseTimeLeftMs -= dt * 1000;
+    if (monster.chaseTimeLeftMs <= 0) monster.alert = false;
+  } else {
     const dist = chebyshevDist(monster.tileX, monster.tileY, p.tileX, p.tileY);
-    if (monster.alert) {
-      // Already standing next to the player - fight rather than jockey for
-      // a different adjacent tile (which could carry it off the player's
-      // directional melee hitbox despite staying just as close).
-      if (dist > 1) stepMonsterToward(state, monster, p.tileX, p.tileY);
-      monster.chaseTilesLeft -= 1;
-      if (monster.chaseTilesLeft <= 0) monster.alert = false;
+    const effectiveVision = p.crouching ? Math.max(0, monster.visionRadius - 2) : monster.visionRadius;
+    if (dist <= effectiveVision) {
+      monster.alert = true;
+      monster.chaseTimeLeftMs = (FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1))) * 1000;
     } else {
-      const effectiveVision = p.crouching ? Math.max(0, monster.visionRadius - 2) : monster.visionRadius;
-      if (dist <= effectiveVision) {
-        monster.alert = true;
-        monster.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
-      } else {
-        wanderMonster(state, monster);
-      }
+      wanderEntity(state, monster, dt, MONSTER_RADIUS);
     }
   }
+  updateDerivedTile(monster);
 }
 
-// Crouching slows the player but lets alert/wandering monsters cover 2
-// tiles per player turn instead of 1, keeping the stealth tradeoff sharp.
-function updateMonstersTurn(state) {
-  const steps = state.player.crouching ? 2 : 1;
-  for (let i = 0; i < steps; i++) {
-    stepMonstersOnce(state);
-  }
-  tryMonsterSpawn(state);
-}
-
-function updateMonsterAnimations(state, dt) {
+// Crouching lets an already-alert monster close a little faster, the
+// free-movement equivalent of the old "2 tiles per player turn" tradeoff.
+function updateMonstersMovement(state, dt) {
+  const effDt = state.player.crouching ? dt * 1.6 : dt;
   for (const monster of state.monsters) {
-    if (!monster.moving) continue;
-    const targetX = monster.tileX * TILE_SIZE;
-    const targetY = monster.tileY * TILE_SIZE;
-    const dx = targetX - monster.pixelX;
-    const dy = targetY - monster.pixelY;
-    const dist = monster.moveSpeed * dt;
-    if (Math.abs(dx) <= dist && Math.abs(dy) <= dist) {
-      monster.pixelX = targetX;
-      monster.pixelY = targetY;
-      monster.moving = false;
-    } else {
-      monster.pixelX += Math.sign(dx) * Math.min(dist, Math.abs(dx));
-      monster.pixelY += Math.sign(dy) * Math.min(dist, Math.abs(dy));
-    }
+    stepMonsterMovement(state, monster, effDt);
   }
 }
 
-// Walking onto a monster's tile instantly aggros it (even if it hadn't
-// spotted the player via vision yet) - actual damage is resolved every
-// frame by updateMonsterCombat while the two remain adjacent.
+// Walking within contact range of a monster instantly aggros it (even if it
+// hadn't spotted the player via vision yet) - actual damage is resolved
+// every frame by updateMonsterCombat while the two remain in range.
 function checkMonsterCollision(state) {
   const p = state.player;
   const hit = state.monsters.find((m) => m.tileX === p.tileX && m.tileY === p.tileY);
   if (hit && !hit.alert) {
     hit.alert = true;
-    hit.chaseTilesLeft = FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1));
+    hit.chaseTimeLeftMs = (FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1))) * 1000;
   }
 }

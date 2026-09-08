@@ -8,11 +8,16 @@ const MENU_TAB_LABELS = { inventory: "Inventory", skills: "Skills", crafting: "C
 
 function createInitialState() {
   const state = {
-    mode: "TITLE", // TITLE | INTRO | OVERWORLD | MENU | SHOP | FURNACE | GAMEOVER | VICTORY
+    mode: "TITLE", // TITLE | INTRO | OVERWORLD | MENU | SHOP | FURNACE | CHEST | CORPSE_LOOT | GAMEOVER | VICTORY
     map: buildMap(),
     npcs: NPCS,
     monsters: [],
     animals: [],
+    corpses: [],
+    lootTarget: null, // id of the corpse open in the CORPSE_LOOT panel
+    storePrompt: null, // { x, y, type } of a placed object pending a "store it?" confirm
+    forageEffects: [], // brief sparkle bursts played where a forage just yielded loot
+    dragging: null, // { from: "inv"|"hotbar", idx, itemId } while the inventory/hotbar drag is in progress
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -144,13 +149,25 @@ canvas.addEventListener("mousedown", (e) => {
     Input.rightClickPos = canvasEventPos(e);
   } else if (e.button === 0) {
     Input.mouseDownPos = canvasEventPos(e);
+    Input.mouseIsDown = true;
   }
 });
 
 canvas.addEventListener("mouseup", (e) => {
   if (e.button === 0) {
     Input.mouseUpPos = canvasEventPos(e);
+    Input.mouseIsDown = false;
   }
+});
+
+// Safety net: if the button is released outside the canvas (or focus is
+// lost mid-drag), still clear the held-down flag so a UI drag can't get
+// stuck following the cursor forever.
+window.addEventListener("mouseup", () => {
+  Input.mouseIsDown = false;
+});
+window.addEventListener("blur", () => {
+  Input.mouseIsDown = false;
 });
 
 canvas.addEventListener("mousemove", (e) => {
@@ -231,6 +248,9 @@ function update(dt) {
       break;
     case "CHEST":
       updateChest(state);
+      break;
+    case "CORPSE_LOOT":
+      updateCorpseLoot(state);
       break;
     case "GAMEOVER":
       if (Input.confirmPressed()) {
@@ -380,12 +400,15 @@ function performInteraction(state, target) {
 }
 
 function updateOverworld(dt) {
-  updateMonsterAnimations(state, dt);
-  updateAnimalAnimations(state, dt);
   if (Dialogue.active) {
     Dialogue.update();
     return;
   }
+
+  updateMonstersMovement(state, dt);
+  updateAnimalsMovement(state, dt);
+  updateDashCharges(state);
+
   if (state.placingItem) {
     updatePlacing(dt);
     return;
@@ -398,6 +421,7 @@ function updateOverworld(dt) {
   updateProjectiles(state, dt);
   updateMonsterCombat(state, dt);
   updatePoisoning(state);
+  updateCorpseDespawn(state);
   if (state.mode === "GAMEOVER") return;
 
   if (Input.menuPressed()) {
@@ -409,7 +433,16 @@ function updateOverworld(dt) {
     state.player.crouching = !state.player.crouching;
   }
   if (Input.wasPressed("KeyF")) {
-    tryPlayerAttack(state);
+    const facingWater = facingTile(state.player);
+    const facingTileType = state.map[facingWater.y] && state.map[facingWater.y][facingWater.x];
+    if (facingTileType === TILE.WATER && hasItem(state, "fishing_rod")) {
+      startFishing(state, facingWater.x, facingWater.y);
+    } else {
+      tryPlayerAttack(state);
+    }
+  }
+  if (Input.wasPressed("KeyQ")) {
+    tryStartDash(state);
   }
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     if (Input.wasPressed(`Digit${i + 1}`)) {
@@ -434,6 +467,46 @@ function updateOverworld(dt) {
     }
   }
 
+  // Corpse looting: Space loots the nearest corpse in range all at once;
+  // clicking its "Loot" popup does the same; clicking the corpse sprite
+  // itself instead opens a panel to choose individual items.
+  if (Input.wasPressed("Space")) {
+    const p = state.player;
+    const nearest = findNearestCorpse(state, p.pixelX + TILE_SIZE / 2, p.pixelY + TILE_SIZE / 2, CORPSE_LOOT_RANGE);
+    if (nearest) lootCorpseAll(state, nearest);
+  }
+  if (Input.clickPos) {
+    const lootHit = (state.uiHitboxes.lootButtons || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (lootHit) {
+      const corpse = state.corpses.find((c) => c.id === lootHit.corpseId);
+      if (corpse) lootCorpseAll(state, corpse);
+      Input.clickPos = null;
+    }
+  }
+  if (Input.clickPos) {
+    const corpseHit = (state.uiHitboxes.corpseHitboxes || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (corpseHit) {
+      const corpse = state.corpses.find((c) => c.id === corpseHit.corpseId);
+      if (corpse) openCorpseLoot(state, corpse);
+      Input.clickPos = null;
+    }
+  }
+
+  // Right-clicking a placed object prompts to store it back in the
+  // inventory, removing it from the world.
+  if (Input.rightClickPos && !Dialogue.active) {
+    const clicked = screenToTile(Input.rightClickPos);
+    const withinRange = chebyshevDist(clicked.x, clicked.y, state.player.tileX, state.player.tileY) <= INTERACT_CLICK_RANGE;
+    const obj = state.placedObjects.find((o) => o.x === clicked.x && o.y === clicked.y);
+    if (withinRange && obj) {
+      openStorePrompt(state, obj);
+      Input.rightClickPos = null;
+    }
+  }
+  if (state.storePrompt) {
+    updateStorePrompt(state);
+  }
+
   // Clicking directly on an NPC or a placed object (crafting table, chest,
   // furnace, trap, bed) within INTERACT_CLICK_RANGE tiles opens it right
   // away, without needing to walk up and face it first.
@@ -449,6 +522,7 @@ function updateOverworld(dt) {
   }
 
   tryMovePlayer(state, dt);
+  updatePlayerTileEffects(state);
 
   const target = facingTile(state.player);
   const placedAtTarget = state.placedObjects.find((o) => o.x === target.x && o.y === target.y);
@@ -512,10 +586,15 @@ function placePlayerAt(state, x, y, dir) {
   const p = state.player;
   p.tileX = x;
   p.tileY = y;
+  p._lastTileX = x;
+  p._lastTileY = y;
   p.pixelX = x * TILE_SIZE;
   p.pixelY = y * TILE_SIZE;
   p.moving = false;
   p.dir = dir;
+  p.facingAngle = Math.atan2(dir8Vec(dir)[1], dir8Vec(dir)[0]);
+  p.dash = null;
+  p.distanceAccum = 0;
 }
 
 // Toggles between the overworld and the player's home interior. Stepping
@@ -651,6 +730,9 @@ function render() {
       renderNightOverlay(state);
       Dialogue.render(ctx, canvas.width, canvas.height);
       renderHud();
+      if (state.fishing.active && state.fishing.phase === "minigame") {
+        drawFishingMinigame(ctx, state);
+      }
       break;
     case "MENU":
       updateCamera(state);
@@ -687,6 +769,15 @@ function render() {
       ctx.restore();
       renderNightOverlay(state);
       renderChest(ctx, state, canvas.width, canvas.height);
+      break;
+    case "CORPSE_LOOT":
+      updateCamera(state);
+      ctx.save();
+      ctx.translate(-Camera.x, -Camera.y);
+      renderMap(ctx, state);
+      ctx.restore();
+      renderNightOverlay(state);
+      renderCorpseLoot(ctx, state, canvas.width, canvas.height);
       break;
     case "GAMEOVER":
       renderEndScreen("You Perished", GAMEOVER_TEXT, "#3d1414", "#c94f4f");
@@ -860,6 +951,32 @@ function renderHud() {
 
   renderStatBarsAboveHotbar(ctx, state);
   renderHotbar(ctx, state);
+  renderStorePrompt(ctx, state, canvas.width, canvas.height);
+  renderDashHud(ctx, state);
+}
+
+// Dash charge pips, drawn just under the top-left HUD box - filled gold for
+// a ready charge, a hollow ring with a countdown ring for one recharging.
+function renderDashHud(ctx, state) {
+  const p = state.player;
+  const boxX = 8, y = 112;
+  const r = 6, gap = 16;
+  ctx.font = "10px 'Segoe UI', sans-serif";
+  ctx.fillStyle = "#cfd8cf";
+  ctx.fillText("Dash (Q)", boxX, y);
+  for (let i = 0; i < DASH_MAX_CHARGES; i++) {
+    const cx = boxX + 46 + i * gap, cy = y - 4;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    if (i < p.dashCharges) {
+      ctx.fillStyle = "#e8c97a";
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = "#8a9a8a";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
 }
 
 // EXP, Hunger, and Thirst live here instead of the top-left HUD box, stacked

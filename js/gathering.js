@@ -53,6 +53,16 @@ function hitResourceNode(state, x, y, tileType) {
   }
 }
 
+const FORAGE_BURST_MS = 450;
+
+function spawnForageBurst(state, tileX, tileY) {
+  state.forageEffects.push({
+    x: tileX * TILE_SIZE + TILE_SIZE / 2,
+    y: tileY * TILE_SIZE + TILE_SIZE / 2,
+    startedAt: performance.now(),
+  });
+}
+
 function handleCampfireInteract(state) {
   if (isNightTime(state.turnCount)) {
     Dialogue.show(["You settle down by the campfire's warmth.", "Sleep comes quickly..."], {
@@ -69,31 +79,49 @@ function handleCampfireInteract(state) {
   }
 }
 
+// Herb/Moonleaf patches route through the same unified forage flow as
+// bushes and sand, so the facing+Enter interact chain gives the exact same
+// odds (including the bonus stick/flint chance) as clicking the popup.
 function handleGatherHerb(state, x, y) {
-  addItem(state, "healing_herb", 1);
-  state.map[y][x] = TILE.GRASS;
-  Dialogue.show(["You pick a sprig of Healing Herb."]);
+  handleForage(state, x, y);
 }
 
 function handleGatherMoonleaf(state, x, y) {
-  addItem(state, "moonleaf", 1);
-  state.map[y][x] = TILE.GRASS;
-  Dialogue.show(["You gather a pale leaf of Moonleaf."]);
+  handleForage(state, x, y);
 }
 
-// Bushes always yield 1-2 random drops from FORAGE_LOOT_TABLE, then clear
-// like a Healing Herb or Moonleaf patch. Reachable via the facing+Enter
-// interact chain, or by clicking the "Forage" popup drawn near the player.
+// Every forage source (bush, herb patch, moonleaf patch, sand patch) yields
+// its own small random assortment, then clears back to grass, plus an
+// independent chance of a bonus Stick and/or Flint on top - reachable via
+// the facing+Enter interact chain, or by clicking the "Forage" popup drawn
+// near the player.
 function handleForage(state, x, y) {
+  const source = FORAGE_SOURCES[state.map[y][x]];
+  if (!source) return;
   state.map[y][x] = TILE.GRASS;
-  const rolls = 1 + Math.floor(Math.random() * 2); // 1-2
+
+  const rolls = source.minRolls + Math.floor(Math.random() * (source.maxRolls - source.minRolls + 1));
   const gained = [];
   for (let i = 0; i < rolls; i++) {
-    const itemId = FORAGE_LOOT_TABLE[Math.floor(Math.random() * FORAGE_LOOT_TABLE.length)];
+    const itemId = source.table[Math.floor(Math.random() * source.table.length)];
     addItem(state, itemId, 1);
     gained.push(ITEMS[itemId].name);
   }
-  Dialogue.show([`You forage the bush and find: ${gained.join(", ")}.`]);
+
+  const bonuses = [];
+  if (Math.random() < FORAGE_BONUS_CHANCE) {
+    addItem(state, "stick", 1);
+    bonuses.push("Stick");
+  }
+  if (Math.random() < FORAGE_BONUS_CHANCE) {
+    addItem(state, "flint", 1);
+    bonuses.push("Flint");
+  }
+
+  spawnForageBurst(state, x, y);
+  let msg = `You forage and find: ${gained.join(", ")}.`;
+  if (bonuses.length) msg += ` Lucky find: ${bonuses.join(", ")}!`;
+  Dialogue.show([msg]);
 }
 
 function handleBedInteract(state) {

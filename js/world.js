@@ -277,6 +277,18 @@ function drawBushTile(ctx, px, py, tx, ty) {
   }
 }
 
+function drawSandTile(ctx, px, py, tx, ty) {
+  ctx.fillStyle = "#d8c58a";
+  ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+  const u = PX_UNIT;
+  for (let i = 0; i < 8; i++) {
+    const gx = px + Math.floor(pixelHash(tx, ty, i * 2) * 9) * u;
+    const gy = py + Math.floor(pixelHash(tx, ty, i * 2 + 1) * 9) * u;
+    ctx.fillStyle = i % 2 === 0 ? "#c9b06a" : "#e8d9a8";
+    ctx.fillRect(gx, gy, u, u);
+  }
+}
+
 function drawRugTile(ctx, px, py, tx, ty) {
   drawFloorTile(ctx, px, py, tx, ty);
   const u = PX_UNIT;
@@ -308,6 +320,7 @@ const TILE_DRAWERS = {
   [TILE.FLOOR]: drawFloorTile,
   [TILE.RUG]: drawRugTile,
   [TILE.BUSH]: drawBushTile,
+  [TILE.SAND]: drawSandTile,
 };
 
 // Pixel-fantasy corner brackets, dropped onto any UI panel rect to give it a
@@ -385,14 +398,14 @@ function renderMap(ctx, state) {
     }
   }
 
-  // Forage popup for any bush tile within reach of the player - clickable,
-  // unlike the plain facing+Enter gather of a Healing Herb or Moonleaf.
+  // Forage popup for any bush/herb/moonleaf/sand tile within reach of the
+  // player - clickable, and identical in effect to the facing+Enter gather.
   state.uiHitboxes.forageButtons = [];
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       const tx = state.player.tileX + dx;
       const ty = state.player.tileY + dy;
-      if (map[ty] && map[ty][tx] === TILE.BUSH) {
+      if (map[ty] && FORAGE_SOURCES[map[ty][tx]]) {
         const rect = drawForagePrompt(ctx, tx, ty);
         // renderMap draws inside a translate(-Camera.x, -Camera.y), so the
         // rect above is in world space - convert to canvas/screen space to
@@ -458,8 +471,37 @@ function renderMap(ctx, state) {
     drawRabbit(ctx, animal);
   }
 
+  // Forage bursts - a brief sparkle where a bush/herb/sand patch just gave
+  // up its loot
+  const nowFx = performance.now();
+  state.forageEffects = state.forageEffects.filter((fx) => nowFx - fx.startedAt < FORAGE_BURST_MS);
+  for (const fx of state.forageEffects) {
+    const t = (nowFx - fx.startedAt) / FORAGE_BURST_MS;
+    ctx.save();
+    ctx.globalAlpha = 1 - t;
+    ctx.strokeStyle = "#e8c97a";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2;
+      const r = 6 + t * 16;
+      ctx.beginPath();
+      ctx.moveTo(fx.x + Math.cos(angle) * r, fx.y + Math.sin(angle) * r);
+      ctx.lineTo(fx.x + Math.cos(angle) * (r + 5), fx.y + Math.sin(angle) * (r + 5));
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Monster/rabbit corpses - hold their item drops until looted
+  state.uiHitboxes.lootButtons = [];
+  state.uiHitboxes.corpseHitboxes = [];
+  for (const corpse of state.corpses) {
+    drawCorpse(ctx, state, corpse);
+  }
+
   // Player
-  drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true, state.player.moving);
+  drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", dir8To4(state.player.dir), true, state.player.moving);
+  if (state.player.dash) drawDashStreak(ctx, state.player);
   drawPlayerFloatText(ctx, state.player);
 
   // Live combat visuals: melee swing, fireball cast glow, and projectiles.
@@ -482,8 +524,18 @@ function renderMap(ctx, state) {
     drawFireball(ctx, proj);
   }
 
-  if (state.fishing.active) {
+  if (state.fishing.active && state.fishing.phase !== "minigame") {
     drawFishingLine(ctx, state);
+  }
+
+  // "Press F to fish" prompt while facing water with a Fishing Rod and not
+  // already fishing.
+  if (!state.fishing.active && hasItem(state, "fishing_rod")) {
+    const target = facingTile(state.player);
+    const facingTileType = map[target.y] && map[target.y][target.x];
+    if (facingTileType === TILE.WATER) {
+      drawInteractPrompt(ctx, target.x, target.y, "Press F to fish");
+    }
   }
 }
 
@@ -507,7 +559,6 @@ function drawFishingLine(ctx, state) {
   } else {
     bobberX = waterX;
     bobberY = waterY + Math.sin(now / 260) * 2;
-    if (f.phase === "bite") bobberY += 4; // sinks slightly on a bite
   }
 
   ctx.strokeStyle = "rgba(240,240,235,0.7)";
@@ -525,18 +576,56 @@ function drawFishingLine(ctx, state) {
   ctx.beginPath();
   ctx.arc(bobberX, bobberY, 4, 0, Math.PI);
   ctx.fill();
-
-  if (f.phase === "bite") {
-    ctx.fillStyle = "#e84f4f";
-    ctx.font = "bold 20px 'Segoe UI', sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("!", bobberX, bobberY - 16);
-    ctx.textAlign = "left";
-  }
 }
 
-const SWING_FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
-const SWING_HALF_SPREAD = Math.PI / 3; // 60 degrees either side of facing, spanning the 3-tile hitbox
+// The minigame overlay: hold Up/Down (or W/S) to move the green catch-box
+// and keep the drifting fish icon inside it - drawn as a fixed HUD panel
+// (called from main.js's render(), outside the world's camera translate)
+// rather than anchored to the water tile, so it stays legible and fixed on
+// screen regardless of where the player is standing.
+function drawFishingMinigame(ctx, state) {
+  const f = state.fishing;
+  const barH = FISH_MINIGAME_BAR_HEIGHT, barW = 46;
+  const x = canvas.width - 90, y = (canvas.height - barH) / 2;
+
+  ctx.fillStyle = "rgba(10,14,12,0.85)";
+  ctx.fillRect(x, y, barW, barH);
+  ctx.strokeStyle = "#e8c97a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, barW, barH);
+
+  const boxH = FISH_MINIGAME_BOX_HEIGHT_FRAC * barH;
+  const boxY = y + f.boxPos * barH - boxH / 2;
+  ctx.fillStyle = "rgba(124,214,138,0.35)";
+  ctx.fillRect(x + 2, boxY, barW - 4, boxH);
+  ctx.strokeStyle = "#7cd68a";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x + 2, boxY, barW - 4, boxH);
+
+  const fishY = y + f.fishPos * barH;
+  drawFishIcon(ctx, x + barW / 2, fishY, 18, "#4a7a9a");
+
+  const meterX = x - 16;
+  ctx.fillStyle = "#222";
+  ctx.fillRect(meterX, y, 8, barH);
+  ctx.fillStyle = "#e8c97a";
+  const fillH = barH * f.progress;
+  ctx.fillRect(meterX, y + barH - fillH, 8, fillH);
+  ctx.strokeStyle = "#000";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(meterX, y, 8, barH);
+
+  ctx.fillStyle = "#f2f2ec";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Up/Down:", x + barW / 2, y - 22);
+  ctx.fillText("move box", x + barW / 2, y - 10);
+  ctx.fillText("Keep the fish", x + barW / 2, y + barH + 16);
+  ctx.fillText("inside! (Esc: reel in)", x + barW / 2, y + barH + 30);
+  ctx.textAlign = "left";
+}
+
+const SWING_HALF_SPREAD = Math.PI / 3; // 60 degrees either side of facing, spanning the melee cone
 
 // Fast start, gentle settle - reused across every combat animation below so
 // swings/thrusts/casts all share the same "snappy but not linear" feel.
@@ -568,7 +657,7 @@ function drawBladeSwing(ctx, player) {
   const t = easeOutCubic(tLinear);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const baseAngle = SWING_FACING_ANGLE[player.dir] ?? Math.PI / 2;
+  const baseAngle = player.facingAngle;
   const startAngle = baseAngle - SWING_HALF_SPREAD;
   const sweepAngle = startAngle + t * (SWING_HALF_SPREAD * 2);
   const radius = TILE_SIZE * 1.3;
@@ -612,11 +701,12 @@ function drawStaffSwing(ctx, player) {
   const t = easeOutCubic(tLinear);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const angle = player.facingAngle;
+  const dx = Math.cos(angle), dy = Math.sin(angle);
   const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.7;
   const tipX = cx + dx * (TILE_SIZE * 0.25 + lunge);
   const tipY = cy + dy * (TILE_SIZE * 0.25 + lunge);
-  const swingAngle = (dx !== 0 ? Math.PI / 2 : 0) + (t - 0.5) * 0.8;
+  const swingAngle = angle + Math.PI / 2 + (t - 0.5) * 0.8;
 
   ctx.save();
   ctx.globalAlpha = 1 - tLinear * 0.25;
@@ -644,7 +734,7 @@ function drawFistSwing(ctx, player) {
   const t = easeOutCubic(tLinear);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const dx = Math.cos(player.facingAngle), dy = Math.sin(player.facingAngle);
   const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.35;
   const fx = cx + dx * (TILE_SIZE * 0.3 + lunge);
   const fy = cy + dy * (TILE_SIZE * 0.3 + lunge);
@@ -660,8 +750,6 @@ function drawFistSwing(ctx, player) {
   ctx.restore();
 }
 
-const TOOL_SWING_DIR_VEC = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-
 // The axe/pickaxe lunges forward toward the tile being worked and eases
 // back, growing then shrinking over TOOL_SWING_ANIM_MS.
 function drawToolSwing(ctx, player) {
@@ -669,11 +757,12 @@ function drawToolSwing(ctx, player) {
   const t = Math.min(1, (now - player.lastToolSwingAt) / TOOL_SWING_ANIM_MS);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const angle = player.facingAngle;
+  const dx = Math.cos(angle), dy = Math.sin(angle);
   const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.55;
   const iconX = cx + dx * (TILE_SIZE * 0.25 + lunge);
   const iconY = cy + dy * (TILE_SIZE * 0.25 + lunge);
-  const swingAngle = (dx !== 0 ? Math.PI / 2 : 0) + (t - 0.5) * 1.2;
+  const swingAngle = angle + Math.PI / 2 + (t - 0.5) * 1.2;
 
   ctx.save();
   ctx.globalAlpha = 1 - t * 0.3;
@@ -699,9 +788,13 @@ function drawWeaponInHand(ctx, player) {
   if (!kind) return;
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const side = player.dir === "left" ? -1 : 1;
-  const hx = cx + side * TILE_SIZE * 0.34;
-  const hy = cy + TILE_SIZE * 0.08;
+  // Carried slightly forward of center and off to one side, rotating with
+  // the player's continuous facing angle so it reads correctly on diagonals.
+  const angle = player.facingAngle;
+  const fx = Math.cos(angle), fy = Math.sin(angle);
+  const perpX = -fy, perpY = fx;
+  const hx = cx + fx * TILE_SIZE * 0.16 + perpX * TILE_SIZE * 0.3;
+  const hy = cy + fy * TILE_SIZE * 0.16 + perpY * TILE_SIZE * 0.3;
   if (kind === "staff") {
     drawStaffIcon(ctx, hx, hy, TILE_SIZE * 0.85, staffGemColor(player.weapon));
   } else if (kind === "dagger") {
@@ -726,7 +819,7 @@ function drawStaffCast(ctx, player) {
   const tLinear = Math.min(1, (now - player.lastCastAt) / CAST_ANIM_MS);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const dx = Math.cos(player.facingAngle), dy = Math.sin(player.facingAngle);
   const tipX = cx + dx * TILE_SIZE * 0.5;
   const tipY = cy + dy * TILE_SIZE * 0.5 - TILE_SIZE * 0.35;
 
@@ -745,7 +838,7 @@ function drawHandsCast(ctx, player) {
   const tLinear = Math.min(1, (now - player.lastCastAt) / CAST_ANIM_MS);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
-  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const dx = Math.cos(player.facingAngle), dy = Math.sin(player.facingAngle);
   const ox = cx + dx * TILE_SIZE * 0.42;
   const oy = cy + dy * TILE_SIZE * 0.42 - TILE_SIZE * 0.05;
   const perpX = dy, perpY = -dx;
@@ -782,6 +875,24 @@ function drawCastGlow(ctx, x, y, tLinear) {
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
+}
+
+// A trail of fading afterimages behind the player while a dash is animating,
+// so the fast (but non-instant) motion reads clearly.
+function drawDashStreak(ctx, player) {
+  const d = player.dash;
+  const t = Math.min(1, (performance.now() - d.startedAt) / DASH_DURATION_MS);
+  for (let i = 1; i <= 3; i++) {
+    const backT = Math.max(0, t - i * 0.12);
+    const ex = easeOutCubic(backT);
+    const gx = d.fromX + (d.toX - d.fromX) * ex;
+    const gy = d.fromY + (d.toY - d.fromY) * ex;
+    ctx.save();
+    ctx.globalAlpha = 0.22 * (1 - i / 4);
+    ctx.fillStyle = "#e8c97a";
+    ctx.fillRect(gx + TILE_SIZE * 0.2, gy + TILE_SIZE * 0.15, TILE_SIZE * 0.6, TILE_SIZE * 0.7);
+    ctx.restore();
+  }
 }
 
 function drawPlayerFloatText(ctx, player) {
@@ -921,7 +1032,7 @@ function drawFieldMonster(ctx, monster) {
     monster.pixelX,
     monster.pixelY,
     flashing ? "#f2f2ec" : monster.enemy.color,
-    monster.dir,
+    dir8To4(monster.dir),
     radius,
     monster.moving,
     monster.isBoss
@@ -964,7 +1075,7 @@ function drawFieldMonster(ctx, monster) {
 // icon, since it never fights back and can only be caught via a trap.
 function drawRabbit(ctx, animal) {
   const flashing = animal.hitFlashUntil && performance.now() < animal.hitFlashUntil;
-  drawMonsterSprite(ctx, animal.pixelX, animal.pixelY, flashing ? "#f2f2ec" : "#cbb89a", animal.dir, 9, animal.moving, false);
+  drawMonsterSprite(ctx, animal.pixelX, animal.pixelY, flashing ? "#f2f2ec" : "#cbb89a", dir8To4(animal.dir), 9, animal.moving, false);
   const u = PX_UNIT;
   const baseY = Math.round(animal.pixelY + TILE_SIZE - 2 * u);
   const cx = Math.round(animal.pixelX + TILE_SIZE / 2);

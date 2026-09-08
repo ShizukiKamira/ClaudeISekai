@@ -33,28 +33,14 @@ function updateInventoryTab(state) {
 
   const items = getFilteredInventory(state, currentCategory(state));
 
-  // Hotbar: drag a consumable from the grid onto a slot to assign it there
-  // (pressing/clicking that slot in the overworld then uses it, with its own
-  // cooldown); a plain click on an already-assigned slot removes it. This
-  // runs before the empty-category early-return so removal still works even
-  // while browsing a category with nothing in it.
-  if (Input.mouseUpPos && Input.mouseDownPos) {
-    const downSlot = (state.uiHitboxes.invSlots || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
-    const upHotbarSlot = (state.uiHitboxes.invHotbarSlots || []).find((b) => pointInRect(Input.mouseUpPos.x, Input.mouseUpPos.y, b));
-    if (downSlot && upHotbarSlot) {
-      const itemId = items[downSlot.idx] ? items[downSlot.idx].item : null;
-      if (itemId && ITEMS[itemId].type === "consumable") {
-        p.hotbar[upHotbarSlot.idx] = itemId;
-      }
-    } else {
-      const downHotbarSlot = (state.uiHitboxes.invHotbarSlots || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
-      if (downHotbarSlot && upHotbarSlot && downHotbarSlot.idx === upHotbarSlot.idx) {
-        const cur = p.hotbar[downHotbarSlot.idx];
-        if (cur && ITEMS[cur] && ITEMS[cur].type === "consumable") p.hotbar[downHotbarSlot.idx] = null;
-      }
-    }
-    Input.mouseDownPos = null;
-  }
+  // Hotbar drag-and-drop: drag a consumable from the grid onto a slot to
+  // assign it there, or drag directly from one hotbar slot to another to
+  // move it; a plain click (mousedown+up on the same, already-assigned
+  // slot) removes it. Runs before the empty-category early-return so
+  // removal/hotbar-to-hotbar dragging still works while browsing an empty
+  // category. The same item is never allowed on two hotbar slots at once -
+  // assigning/moving one clears any other slot that already held it.
+  updateHotbarDrag(state, items, "invSlots", "invHotbarSlots");
 
   if (items.length === 0) return;
   state.menuCursor = Math.min(state.menuCursor, items.length - 1);
@@ -390,6 +376,22 @@ function drawLogIcon(ctx, cx, cy, s) {
     ctx.stroke();
   });
   ctx.restore();
+}
+
+function drawSandIcon(ctx, cx, cy, s) {
+  ctx.fillStyle = "#d8c58a";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + s * 0.1, s * 0.34, s * 0.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "#a9822f";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = "#c9b06a";
+  [[-0.12, 0.06], [0.1, 0.12], [0.02, -0.02]].forEach(([dx, dy]) => {
+    ctx.beginPath();
+    ctx.arc(cx + s * dx, cy + s * dy, s * 0.03, 0, Math.PI * 2);
+    ctx.fill();
+  });
 }
 
 function drawStoneIcon(ctx, cx, cy, s) {
@@ -872,6 +874,9 @@ function drawItemIcon(ctx, itemId, cx, cy, s) {
     case "stone":
       drawStoneIcon(ctx, cx, cy, s);
       break;
+    case "sand":
+      drawSandIcon(ctx, cx, cy, s);
+      break;
     case "iron_ore":
       drawOreIcon(ctx, cx, cy, s, "#cfd8cf");
       break;
@@ -1044,8 +1049,15 @@ function renderPlayerPanel(ctx, state, x, y, w, h) {
   const eqGap = (w - eqSize * 2) / 3;
   const weaponEntry = p.weapon ? { item: p.weapon, qty: 1 } : null;
   const accessoryEntry = p.accessory ? { item: p.accessory, qty: 1 } : null;
-  drawItemSlot(ctx, x + eqGap, eqY, eqSize, weaponEntry, false);
-  drawItemSlot(ctx, x + eqGap * 2 + eqSize, eqY, eqSize, accessoryEntry, false);
+  const weaponX = x + eqGap, accessoryX = x + eqGap * 2 + eqSize;
+  drawItemSlot(ctx, weaponX, eqY, eqSize, weaponEntry, false);
+  drawItemSlot(ctx, accessoryX, eqY, eqSize, accessoryEntry, false);
+  // Tracked so a dragged hotbar item can be shown glowing red here - it's
+  // never a valid drop target for a consumable.
+  state.uiHitboxes.equipSlots = [
+    { slot: "weapon", x: weaponX, y: eqY, w: eqSize, h: eqSize },
+    { slot: "accessory", x: accessoryX, y: eqY, w: eqSize, h: eqSize },
+  ];
 
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "10px 'Segoe UI', sans-serif";
@@ -1114,7 +1126,7 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
   });
   ctx.textAlign = "left";
 
-  const hotbarAreaH = 54; // label + one row of hotbar slots, reserved below the grid
+  const hotbarAreaH = 96; // hunger/thirst bars + label + one row of hotbar slots, reserved below the grid
   const gridY = y + catH + 14;
   const gridH = h - catH - 14 - 28 - hotbarAreaH;
 
@@ -1144,7 +1156,18 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
     ctx.textAlign = "left";
   }
 
-  const hotbarLabelY = gridY + rows * (slotSize + slotGap) + 14;
+  const statsY = gridY + rows * (slotSize + slotGap) + 14;
+  const statsW = HOTBAR_SIZE * 30 + (HOTBAR_SIZE - 1) * Math.max(3, Math.round(30 * 0.18));
+  const rowH = 15, barH = 5;
+  ctx.font = "10px 'Segoe UI', sans-serif";
+  ctx.fillStyle = p.hunger <= 0 ? "#e88a5a" : "#cfd8cf";
+  ctx.fillText(`Hunger ${Math.ceil(p.hunger)}/${HUNGER_MAX}`, x, statsY);
+  drawBar(ctx, x, statsY + 3, statsW, barH, p.hunger / HUNGER_MAX, "#c9a03a");
+  ctx.fillStyle = p.thirst <= 0 ? "#e88a5a" : "#cfd8cf";
+  ctx.fillText(`Thirst ${Math.ceil(p.thirst)}/${THIRST_MAX}`, x, statsY + rowH);
+  drawBar(ctx, x, statsY + rowH + 3, statsW, barH, p.thirst / THIRST_MAX, "#4f8dae");
+
+  const hotbarLabelY = statsY + rowH * 2 + 10;
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "11px 'Segoe UI', sans-serif";
   ctx.fillText("Hotbar - drag a potion here to assign 1-9 (click an assigned slot to remove):", x, hotbarLabelY);
@@ -1166,4 +1189,5 @@ function renderInventoryTab(ctx, state, x, y, w, h) {
   }
 
   renderPlayerPanel(ctx, state, rightX, y, rightW, h);
+  renderHotbarDragOverlay(ctx, state, "invHotbarSlots");
 }
