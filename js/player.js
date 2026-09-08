@@ -39,7 +39,7 @@ function createPlayer() {
     toolSwingType: null, // "axe" | "pickaxe", set alongside lastToolSwingAt
     hunger: HUNGER_MAX,
     thirst: THIRST_MAX,
-    tilesOutOfCombat: 0,
+    regenCooldownUntil: 0,
     hotbar: new Array(HOTBAR_SIZE).fill(null),
     hotbarCooldownUntil: new Array(HOTBAR_SIZE).fill(0),
     poisonedUntil: 0,

@@ -20,6 +20,9 @@ function createInitialState() {
     dragging: null, // { from: "inv"|"hotbar", idx, itemId } while the inventory/hotbar drag is in progress
     eventLog: [], // { text, kind, at } - a running record of loot/damage/kills/etc, shown top-left
     eventLogMinimized: false,
+    eventLogRect: { x: 8, y: 128, w: 230, h: 145 }, // player-adjustable position/size
+    eventLogDrag: null, // { offsetX, offsetY } while the panel is being dragged by its header
+    eventLogResize: null, // { startW, startH, startMouseX, startMouseY } while the panel is being resized
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -417,13 +420,11 @@ function updateOverworld(dt) {
   updateAnimalsMovement(state, dt);
   updateDashCharges(state);
 
-  if (Input.clickPos) {
-    const toggleHit = (state.uiHitboxes.eventLogToggle || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
-    if (toggleHit) {
-      state.eventLogMinimized = !state.eventLogMinimized;
-      Input.clickPos = null;
-    }
-  }
+  // Consumes any click/drag aimed at the event log panel (move/resize/
+  // minimize) so it never leaks into world interactions below - but doesn't
+  // pause the rest of the frame, so monsters keep moving and ticks keep
+  // firing while the player repositions it.
+  updateEventLogPanel(state);
 
   if (state.placingItem) {
     updatePlacing(dt);
@@ -1003,11 +1004,19 @@ function renderDashHud(ctx, state) {
 // ---------------------------------------------------------------------------
 // Event log: a running record of "everything that's happened" (loot, damage
 // taken/dealt, kills, forage/fishing/crafting results, ...), shown as a
-// small scrollable panel in the top-left with a "-"/"+" minimize toggle.
+// small scrollable panel with a "-"/"+" minimize toggle. Its position and
+// size (state.eventLogRect) are player-adjustable: drag the header to move
+// it, drag the bottom-right grip to resize it - see updateEventLogPanel.
 // ---------------------------------------------------------------------------
 
 const EVENT_LOG_MAX = 60;
-const EVENT_LOG_VISIBLE_LINES = 9;
+const EVENT_LOG_HEADER_H = 20;
+const EVENT_LOG_LINE_H = 13;
+const EVENT_LOG_MIN_W = 140;
+const EVENT_LOG_MAX_W = 420;
+const EVENT_LOG_MIN_H = EVENT_LOG_HEADER_H + EVENT_LOG_LINE_H + 8; // header + at least 1 line
+const EVENT_LOG_MAX_H = 420;
+const EVENT_LOG_RESIZE_GRIP = 14;
 const EVENT_LOG_COLORS = {
   info: "#f2f2ec",
   loot: "#e8c97a",
@@ -1021,11 +1030,80 @@ function logEvent(state, text, kind = "info") {
   if (state.eventLog.length > EVENT_LOG_MAX) state.eventLog.shift();
 }
 
-function renderEventLog(ctx, state) {
-  const x = 8, y = 128, w = 230;
-  const headerH = 20;
+// Handles dragging the panel by its header and resizing it by its
+// bottom-right grip, called early in updateOverworld (before any other
+// click/interact handling) so a drag that starts on the panel never leaks
+// through to world clicks underneath it. Returns true if input this frame
+// was claimed by the panel.
+function updateEventLogPanel(state) {
+  const rect = state.eventLogRect;
 
+  if (state.eventLogDrag) {
+    const d = state.eventLogDrag;
+    rect.x = Math.max(0, Math.min(canvas.width - rect.w, Input.mousePos.x - d.offsetX));
+    rect.y = Math.max(0, Math.min(canvas.height - EVENT_LOG_HEADER_H, Input.mousePos.y - d.offsetY));
+    if (!Input.mouseIsDown) {
+      state.eventLogDrag = null;
+      Input.clickPos = null; // suppress the click the mouseup also generates
+    }
+    return true;
+  }
+
+  if (state.eventLogResize) {
+    const r = state.eventLogResize;
+    rect.w = Math.max(EVENT_LOG_MIN_W, Math.min(EVENT_LOG_MAX_W, r.startW + (Input.mousePos.x - r.startMouseX)));
+    rect.h = Math.max(EVENT_LOG_MIN_H, Math.min(EVENT_LOG_MAX_H, r.startH + (Input.mousePos.y - r.startMouseY)));
+    if (!Input.mouseIsDown) {
+      state.eventLogResize = null;
+      Input.clickPos = null;
+    }
+    return true;
+  }
+
+  if (Input.mouseDownPos) {
+    const resizeHit = (state.uiHitboxes.eventLogResizeHandle || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
+    if (resizeHit) {
+      state.eventLogResize = { startW: rect.w, startH: rect.h, startMouseX: Input.mouseDownPos.x, startMouseY: Input.mouseDownPos.y };
+      Input.mouseDownPos = null;
+      return true;
+    }
+    const toggleHit = (state.uiHitboxes.eventLogToggle || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
+    if (toggleHit) {
+      state.eventLogMinimized = !state.eventLogMinimized;
+      Input.mouseDownPos = null;
+      Input.clickPos = null;
+      return true;
+    }
+    const headerHit = (state.uiHitboxes.eventLogHeaderDrag || []).find((b) => pointInRect(Input.mouseDownPos.x, Input.mouseDownPos.y, b));
+    if (headerHit) {
+      state.eventLogDrag = { offsetX: Input.mouseDownPos.x - rect.x, offsetY: Input.mouseDownPos.y - rect.y };
+      Input.mouseDownPos = null;
+      return true;
+    }
+  }
+
+  // A stray click anywhere else on the panel's body shouldn't fall through
+  // to whatever's underneath it either.
+  const panelHit = (state.uiHitboxes.eventLogPanel || [])[0];
+  if (Input.clickPos && panelHit && pointInRect(Input.clickPos.x, Input.clickPos.y, panelHit)) {
+    Input.clickPos = null;
+    return true;
+  }
+  return false;
+}
+
+function renderEventLog(ctx, state) {
+  const rect = state.eventLogRect;
+  const { x, y, w } = rect;
+  const headerH = EVENT_LOG_HEADER_H;
+  const minimized = state.eventLogMinimized;
+  const panelH = minimized ? headerH : rect.h;
+
+  state.uiHitboxes.eventLogPanel = [{ x, y, w, h: panelH }];
   state.uiHitboxes.eventLogToggle = [];
+  state.uiHitboxes.eventLogHeaderDrag = [];
+  state.uiHitboxes.eventLogResizeHandle = [];
+
   ctx.fillStyle = "rgba(10,14,12,0.85)";
   ctx.fillRect(x, y, w, headerH);
   ctx.strokeStyle = "#e8c97a";
@@ -1033,7 +1111,7 @@ function renderEventLog(ctx, state) {
   ctx.strokeRect(x, y, w, headerH);
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 11px 'Segoe UI', sans-serif";
-  ctx.fillText("Log", x + 8, y + 14);
+  ctx.fillText("Log (drag to move)", x + 8, y + 14);
 
   const btnSize = 16;
   const btnX = x + w - btnSize - 2, btnY = y + 2;
@@ -1044,15 +1122,17 @@ function renderEventLog(ctx, state) {
   ctx.fillStyle = "#f2f2ec";
   ctx.font = "bold 13px 'Segoe UI', sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(state.eventLogMinimized ? "+" : "-", btnX + btnSize / 2, btnY + 12);
+  ctx.fillText(minimized ? "+" : "-", btnX + btnSize / 2, btnY + 12);
   ctx.textAlign = "left";
   state.uiHitboxes.eventLogToggle.push({ x: btnX, y: btnY, w: btnSize, h: btnSize });
+  // The header is draggable everywhere except over the toggle button itself.
+  state.uiHitboxes.eventLogHeaderDrag.push({ x, y, w: btnX - x, h: headerH });
 
-  if (state.eventLogMinimized) return;
+  if (minimized) return;
 
-  const lineH = 13;
-  const bodyH = EVENT_LOG_VISIBLE_LINES * lineH + 8;
+  const lineH = EVENT_LOG_LINE_H;
   const bodyY = y + headerH;
+  const bodyH = rect.h - headerH;
   ctx.fillStyle = "rgba(10,14,12,0.72)";
   ctx.fillRect(x, bodyY, w, bodyH);
   ctx.strokeStyle = "rgba(232,201,122,0.4)";
@@ -1060,7 +1140,8 @@ function renderEventLog(ctx, state) {
   ctx.strokeRect(x, bodyY, w, bodyH);
 
   ctx.font = "10px 'Segoe UI', sans-serif";
-  const entries = state.eventLog.slice(-EVENT_LOG_VISIBLE_LINES);
+  const visibleLines = Math.max(1, Math.floor((bodyH - 8) / lineH));
+  const entries = state.eventLog.slice(-visibleLines);
   let ly = bodyY + 12;
   for (const entry of entries) {
     ctx.fillStyle = EVENT_LOG_COLORS[entry.kind] || EVENT_LOG_COLORS.info;
@@ -1072,6 +1153,20 @@ function renderEventLog(ctx, state) {
     ctx.fillText(text, x + 8, ly);
     ly += lineH;
   }
+
+  // Resize grip: a few diagonal ticks in the bottom-right corner.
+  const gx = x + w, gy = bodyY + bodyH;
+  ctx.strokeStyle = "rgba(232,201,122,0.7)";
+  ctx.lineWidth = 1.5;
+  for (const off of [4, 8, 12]) {
+    ctx.beginPath();
+    ctx.moveTo(gx - off, gy - 2);
+    ctx.lineTo(gx - 2, gy - off);
+    ctx.stroke();
+  }
+  state.uiHitboxes.eventLogResizeHandle.push({
+    x: gx - EVENT_LOG_RESIZE_GRIP, y: gy - EVENT_LOG_RESIZE_GRIP, w: EVENT_LOG_RESIZE_GRIP, h: EVENT_LOG_RESIZE_GRIP,
+  });
 }
 
 // EXP, Hunger, and Thirst live here instead of the top-left HUD box, stacked

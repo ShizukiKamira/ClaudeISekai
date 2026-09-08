@@ -331,17 +331,17 @@ function damageMonster(state, monster, dmg) {
   }
 }
 
-// Walking undisturbed slowly mends the player's wounds: after 5 tiles with
-// no combat, every further tile heals a little HP and MP, shown as floating
-// green/blue text above the player.
+// Any combat action (attacking, casting, dashing, or getting hit) pushes
+// the regen cooldown back out - so HP/MP only start mending once the player
+// has gone REGEN_COOLDOWN_MS without doing (or taking) anything hostile,
+// shown as floating green/blue text above the player once it kicks in.
 function resetOutOfCombat(state) {
-  state.player.tilesOutOfCombat = 0;
+  state.player.regenCooldownUntil = performance.now() + REGEN_COOLDOWN_MS;
 }
 
 function tickOutOfCombatRegen(state) {
   const p = state.player;
-  p.tilesOutOfCombat += 1;
-  if (p.tilesOutOfCombat <= OUT_OF_COMBAT_TILE_THRESHOLD) return;
+  if (performance.now() < p.regenCooldownUntil) return;
   // A starving or dehydrated body doesn't mend itself passively.
   if (p.hunger <= 0 || p.thirst <= 0) return;
 

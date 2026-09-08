@@ -5,6 +5,11 @@
 
 const SHOP_GRID_COLS = 5;
 
+function getOwnedQty(state, itemId) {
+  const entry = state.player.inventory.find((i) => i.item === itemId);
+  return entry ? entry.qty : 0;
+}
+
 function getShopListing(state) {
   const cat = ITEM_CATEGORIES[state.shop.filterIndex].id;
   if (state.shop.mode === "buy") {
@@ -165,6 +170,21 @@ function renderShop(ctx, state, canvasW, canvasH) {
       const item = listing[idx];
       const entry = item ? { item: item.item, qty: item.qty } : null;
       drawItemSlot(ctx, sx, sy, slotSize, entry, idx === state.shop.cursor && !!entry);
+      // While buying, show how many of this item the player already has -
+      // the sell-mode badge already shows this (its qty IS the owned count),
+      // so this only applies on the buy side.
+      if (item && state.shop.mode === "buy") {
+        const owned = getOwnedQty(state, item.item);
+        if (owned > 0) {
+          ctx.fillStyle = "rgba(10,14,12,0.85)";
+          ctx.font = "bold 10px 'Segoe UI', sans-serif";
+          const label = `(${owned})`;
+          const labelW = ctx.measureText(label).width;
+          ctx.fillRect(sx + 1, sy + 1, labelW + 6, 13);
+          ctx.fillStyle = "#9adf7a";
+          ctx.fillText(label, sx + 4, sy + 11);
+        }
+      }
       if (item) state.uiHitboxes.shopSlots.push({ idx, x: sx, y: sy, w: slotSize, h: slotSize });
     }
   }
