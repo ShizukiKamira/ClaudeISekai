@@ -303,6 +303,7 @@ const ITEMS = {
     category: "weapons",
     atkBonus: 6,
     value: 60,
+    weaponKind: "sword",
   },
   wooden_staff: {
     name: "Wooden Staff",
@@ -311,6 +312,7 @@ const ITEMS = {
     category: "weapons",
     atkBonus: 2,
     value: 25,
+    weaponKind: "staff",
   },
   bronze_sword: {
     name: "Bronze Sword",
@@ -319,6 +321,7 @@ const ITEMS = {
     category: "weapons",
     atkBonus: 4,
     value: 40,
+    weaponKind: "sword",
   },
   magic_staff_1: {
     name: "Magic Staff I",
@@ -327,6 +330,7 @@ const ITEMS = {
     category: "weapons",
     atkBonus: 6,
     value: 70,
+    weaponKind: "staff",
   },
   traveler_charm: {
     name: "Traveler's Charm",
@@ -343,6 +347,7 @@ const ITEMS = {
     category: "weapons",
     atkBonus: 7,
     value: 55,
+    weaponKind: "dagger",
   },
   slime_gel: {
     name: "Slime Gel",
@@ -891,7 +896,10 @@ const INITIAL_FIELD_MONSTERS = 3;
 const PLAYER_MOVE_SPEED = 150; // px/s, was 220 - slower for reaction time
 const MONSTER_MOVE_SPEED = 130; // px/s, was 260
 const ATTACK_COOLDOWN_MS = 500;
-const SWING_ANIM_MS = 200; // how long the melee swing arc animates for
+const SWING_ANIM_MS = 220; // how long the melee swing arc animates for
+const STAFF_SWING_ANIM_MS = 260; // how long a staff bonk/thrust animates for
+const FIST_SWING_ANIM_MS = 160; // how long a barehanded jab animates for
+const CAST_ANIM_MS = 380; // how long the fireball cast glow (staff/hands) animates for
 const TOOL_SWING_ANIM_MS = 250; // how long the axe/pickaxe lunge animates for
 const RESOURCE_HITS_REQUIRED = 3; // hits needed to fell a tree or break a boulder
 const MONSTER_ATTACK_INTERVAL_MS = 1300;
@@ -946,6 +954,15 @@ const RABBIT_SPAWN_CHANCE = 0.08;
 const RABBIT_MOVE_SPEED = 110; // px/s
 const TRAP_CATCH_CHANCE = 0.2; // per monster-turn tick, while a rabbit is adjacent to an unloaded trap
 const RABBIT_NOTICE_RADIUS = 3; // tiles - a rabbit within this of the player flees instead of wandering
+const RABBIT_MAX_HP = 14; // low HP so it still dies fast, but takes real hits like a monster instead of one melee swing
+
+// ---------------------------------------------------------------------------
+// Interacting at range: clicking directly on an NPC or a placed object
+// (crafting table, chest, furnace, trap, bed) opens it without needing to
+// walk up and face it, as long as it's within this many tiles.
+// ---------------------------------------------------------------------------
+
+const INTERACT_CLICK_RANGE = 4;
 
 // ---------------------------------------------------------------------------
 // Foraging: bushes offer a clickable "Forage" popup for a small random

@@ -64,6 +64,9 @@ function spawnRabbit(state, x, y) {
     moving: false,
     dir: "down",
     moveSpeed: RABBIT_MOVE_SPEED,
+    currentHp: RABBIT_MAX_HP,
+    hitFlashUntil: 0,
+    floatText: null,
   });
 }
 
@@ -160,8 +163,19 @@ function stepRabbit(state, animal) {
   }
 }
 
-// A melee swing that lands on a rabbit hunts it down outright - the direct
-// alternative to waiting on a loaded trap.
+// Damages a rabbit exactly like damageMonster does a field monster (hit
+// flash, floating damage text, HP depletion) - shared by melee swings and
+// fireball hits, the direct alternative to waiting on a loaded trap.
+function damageAnimal(state, animal, dmg) {
+  resetOutOfCombat(state);
+  animal.currentHp = Math.max(0, (animal.currentHp ?? RABBIT_MAX_HP) - dmg);
+  animal.hitFlashUntil = performance.now() + 150;
+  animal.floatText = { text: `-${dmg}`, until: performance.now() + 700 };
+  if (animal.currentHp <= 0) {
+    killRabbit(state, animal);
+  }
+}
+
 function killRabbit(state, animal) {
   state.animals = state.animals.filter((a) => a !== animal);
   addItem(state, "rabbit_meat", 1);

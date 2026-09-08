@@ -462,11 +462,20 @@ function renderMap(ctx, state) {
   drawCharacter(ctx, state.player.pixelX, state.player.pixelY, "#f2d9a0", state.player.dir, true, state.player.moving);
   drawPlayerFloatText(ctx, state.player);
 
-  // Live combat visuals: sword swing flash and fireball projectiles
-  if (performance.now() - state.player.lastAttackAt < SWING_ANIM_MS) {
-    drawSwordSwing(ctx, state.player);
+  // Live combat visuals: melee swing, fireball cast glow, and projectiles.
+  // The equipped weapon is always visible at rest, and swaps for the swing
+  // animation itself while one is actively playing.
+  const now = performance.now();
+  const swinging = now - state.player.lastAttackAt < meleeAnimDuration(state.player.meleeAnimKind);
+  if (swinging) {
+    drawMeleeSwing(ctx, state.player);
+  } else {
+    drawWeaponInHand(ctx, state.player);
   }
-  if (state.player.toolSwingType && performance.now() - state.player.lastToolSwingAt < TOOL_SWING_ANIM_MS) {
+  if (now - state.player.lastCastAt < CAST_ANIM_MS) {
+    drawCastAnimation(ctx, state.player);
+  }
+  if (state.player.toolSwingType && now - state.player.lastToolSwingAt < TOOL_SWING_ANIM_MS) {
     drawToolSwing(ctx, state.player);
   }
   for (const proj of state.projectiles) {
@@ -529,11 +538,34 @@ function drawFishingLine(ctx, state) {
 const SWING_FACING_ANGLE = { right: 0, down: Math.PI / 2, left: Math.PI, up: -Math.PI / 2 };
 const SWING_HALF_SPREAD = Math.PI / 3; // 60 degrees either side of facing, spanning the 3-tile hitbox
 
-// A blade sweeping through the facing direction's 3-tile arc, growing over
-// SWING_ANIM_MS and fading out as it completes.
-function drawSwordSwing(ctx, player) {
+// Fast start, gentle settle - reused across every combat animation below so
+// swings/thrusts/casts all share the same "snappy but not linear" feel.
+function easeOutCubic(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+function meleeAnimDuration(kind) {
+  if (kind === "staff") return STAFF_SWING_ANIM_MS;
+  if (kind === "fists") return FIST_SWING_ANIM_MS;
+  return SWING_ANIM_MS;
+}
+
+// Dispatches to the animation matching whatever the player swung with -
+// a swordsman's blade, a mage's staff, or a bare-handed jab all read as
+// distinct motions rather than one generic "attack flash".
+function drawMeleeSwing(ctx, player) {
+  if (player.meleeAnimKind === "staff") drawStaffSwing(ctx, player);
+  else if (player.meleeAnimKind === "fists") drawFistSwing(ctx, player);
+  else drawBladeSwing(ctx, player);
+}
+
+// A blade sweeping through the facing direction's 3-tile arc, the sword
+// itself visibly riding along the sweep's leading edge, easing out into
+// its follow-through rather than moving at a flat, linear rate.
+function drawBladeSwing(ctx, player) {
   const now = performance.now();
-  const t = Math.min(1, (now - player.lastAttackAt) / SWING_ANIM_MS);
+  const tLinear = Math.min(1, (now - player.lastAttackAt) / SWING_ANIM_MS);
+  const t = easeOutCubic(tLinear);
   const cx = player.pixelX + TILE_SIZE / 2;
   const cy = player.pixelY + TILE_SIZE / 2;
   const baseAngle = SWING_FACING_ANGLE[player.dir] ?? Math.PI / 2;
@@ -542,7 +574,7 @@ function drawSwordSwing(ctx, player) {
   const radius = TILE_SIZE * 1.3;
 
   ctx.save();
-  ctx.globalAlpha = 0.85 * (1 - t * 0.6);
+  ctx.globalAlpha = 0.85 * (1 - tLinear * 0.6);
   ctx.strokeStyle = "#f2f2ec";
   ctx.lineWidth = 6;
   ctx.lineCap = "round";
@@ -556,6 +588,75 @@ function drawSwordSwing(ctx, player) {
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 0.75, startAngle, sweepAngle);
   ctx.stroke();
+  ctx.restore();
+
+  // the actual sword, carried at the tip of the sweep so the equipped
+  // weapon is what's visibly doing the cutting
+  const tipX = cx + Math.cos(sweepAngle) * radius * 0.85;
+  const tipY = cy + Math.sin(sweepAngle) * radius * 0.85;
+  ctx.save();
+  ctx.globalAlpha = 1 - tLinear * 0.3;
+  ctx.translate(tipX, tipY);
+  ctx.rotate(sweepAngle + Math.PI / 4);
+  const kind = getWeaponKind(player);
+  if (kind === "dagger") drawDaggerIcon(ctx, 0, 0, TILE_SIZE * 0.75);
+  else drawSwordIcon(ctx, 0, 0, TILE_SIZE * 0.85);
+  ctx.restore();
+}
+
+// A staff doesn't slash - it's swung/thrust like a quarterstaff, lunging
+// forward and snapping back, with a small impact spark at full extension.
+function drawStaffSwing(ctx, player) {
+  const now = performance.now();
+  const tLinear = Math.min(1, (now - player.lastAttackAt) / STAFF_SWING_ANIM_MS);
+  const t = easeOutCubic(tLinear);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.7;
+  const tipX = cx + dx * (TILE_SIZE * 0.25 + lunge);
+  const tipY = cy + dy * (TILE_SIZE * 0.25 + lunge);
+  const swingAngle = (dx !== 0 ? Math.PI / 2 : 0) + (t - 0.5) * 0.8;
+
+  ctx.save();
+  ctx.globalAlpha = 1 - tLinear * 0.25;
+  ctx.translate(tipX, tipY);
+  ctx.rotate(swingAngle);
+  drawStaffIcon(ctx, 0, 0, TILE_SIZE * 0.9, staffGemColor(player.weapon));
+  ctx.restore();
+
+  if (t > 0.6) {
+    const sparkT = (t - 0.6) / 0.4;
+    ctx.save();
+    ctx.globalAlpha = (1 - sparkT) * 0.8;
+    ctx.fillStyle = "#c9b8f0";
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, TILE_SIZE * 0.18 * sparkT, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// Barehanded: a quick, small jab with no weapon icon - fast and unarmed.
+function drawFistSwing(ctx, player) {
+  const now = performance.now();
+  const tLinear = Math.min(1, (now - player.lastAttackAt) / FIST_SWING_ANIM_MS);
+  const t = easeOutCubic(tLinear);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const lunge = Math.sin(t * Math.PI) * TILE_SIZE * 0.35;
+  const fx = cx + dx * (TILE_SIZE * 0.3 + lunge);
+  const fy = cy + dy * (TILE_SIZE * 0.3 + lunge);
+
+  ctx.save();
+  ctx.globalAlpha = 1 - tLinear * 0.3;
+  ctx.fillStyle = "#e8b98a";
+  ctx.strokeStyle = "#8a6248";
+  ctx.lineWidth = 1;
+  const s = TILE_SIZE * 0.22;
+  ctx.fillRect(fx - s / 2, fy - s / 2, s, s);
+  ctx.strokeRect(fx - s / 2, fy - s / 2, s, s);
   ctx.restore();
 }
 
@@ -583,6 +684,103 @@ function drawToolSwing(ctx, player) {
   } else {
     drawAxeIcon(ctx, 0, 0, TILE_SIZE * 0.8);
   }
+  ctx.restore();
+}
+
+function staffGemColor(weaponId) {
+  return weaponId === "wooden_staff" ? "#7aa9c9" : "#8e6fce";
+}
+
+// The equipped weapon carried at rest, whenever no swing animation is
+// currently playing - a swordsman visibly carries their sword, a mage
+// their staff, so the loadout reads at a glance even outside combat.
+function drawWeaponInHand(ctx, player) {
+  const kind = getWeaponKind(player);
+  if (!kind) return;
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const side = player.dir === "left" ? -1 : 1;
+  const hx = cx + side * TILE_SIZE * 0.34;
+  const hy = cy + TILE_SIZE * 0.08;
+  if (kind === "staff") {
+    drawStaffIcon(ctx, hx, hy, TILE_SIZE * 0.85, staffGemColor(player.weapon));
+  } else if (kind === "dagger") {
+    drawDaggerIcon(ctx, hx, hy, TILE_SIZE * 0.55);
+  } else {
+    drawSwordIcon(ctx, hx, hy, TILE_SIZE * 0.7);
+  }
+}
+
+// Dispatches the fireball cast glow to a staff channel or a barehanded
+// conjuring gesture, matching drawWeaponInHand/drawMeleeSwing's logic: only
+// an actual staff channels magic, a sword equipped instead falls back to hands.
+function drawCastAnimation(ctx, player) {
+  if (player.castAnimKind === "staff") drawStaffCast(ctx, player);
+  else drawHandsCast(ctx, player);
+}
+
+// The staff is raised toward the cast direction while a glowing orb charges
+// and releases at its tip.
+function drawStaffCast(ctx, player) {
+  const now = performance.now();
+  const tLinear = Math.min(1, (now - player.lastCastAt) / CAST_ANIM_MS);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const tipX = cx + dx * TILE_SIZE * 0.5;
+  const tipY = cy + dy * TILE_SIZE * 0.5 - TILE_SIZE * 0.35;
+
+  ctx.save();
+  ctx.globalAlpha = 1 - tLinear * 0.2;
+  drawStaffIcon(ctx, tipX, tipY, TILE_SIZE * 0.9, staffGemColor(player.weapon));
+  ctx.restore();
+
+  drawCastGlow(ctx, tipX, tipY - TILE_SIZE * 0.1, tLinear);
+}
+
+// Barehanded (or a blade instead of a staff): two hands cup a glowing orb
+// that charges and releases in front of the caster.
+function drawHandsCast(ctx, player) {
+  const now = performance.now();
+  const tLinear = Math.min(1, (now - player.lastCastAt) / CAST_ANIM_MS);
+  const cx = player.pixelX + TILE_SIZE / 2;
+  const cy = player.pixelY + TILE_SIZE / 2;
+  const [dx, dy] = TOOL_SWING_DIR_VEC[player.dir] || [0, 1];
+  const ox = cx + dx * TILE_SIZE * 0.42;
+  const oy = cy + dy * TILE_SIZE * 0.42 - TILE_SIZE * 0.05;
+  const perpX = dy, perpY = -dx;
+  const spread = TILE_SIZE * (0.22 - tLinear * 0.1);
+
+  ctx.save();
+  ctx.globalAlpha = 1 - tLinear * 0.2;
+  ctx.fillStyle = "#e8b98a";
+  const hs = TILE_SIZE * 0.16;
+  ctx.beginPath();
+  ctx.arc(ox + perpX * spread, oy + perpY * spread, hs / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(ox - perpX * spread, oy - perpY * spread, hs / 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  drawCastGlow(ctx, ox, oy, tLinear);
+}
+
+// Shared glow orb: grows then fades over the cast animation's course.
+function drawCastGlow(ctx, x, y, tLinear) {
+  const glowT = Math.sin(Math.min(1, tLinear) * Math.PI);
+  const radius = TILE_SIZE * (0.1 + glowT * 0.22);
+  ctx.save();
+  ctx.globalAlpha = 0.5 * glowT + 0.15;
+  ctx.fillStyle = "#e8935a";
+  ctx.beginPath();
+  ctx.arc(x, y, radius * 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.85 * glowT + 0.15;
+  ctx.fillStyle = "#f6d97a";
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -765,7 +963,8 @@ function drawFieldMonster(ctx, monster) {
 // A rabbit is just a small tan critter sprite - no HP bar, level, or alert
 // icon, since it never fights back and can only be caught via a trap.
 function drawRabbit(ctx, animal) {
-  drawMonsterSprite(ctx, animal.pixelX, animal.pixelY, "#cbb89a", animal.dir, 9, animal.moving, false);
+  const flashing = animal.hitFlashUntil && performance.now() < animal.hitFlashUntil;
+  drawMonsterSprite(ctx, animal.pixelX, animal.pixelY, flashing ? "#f2f2ec" : "#cbb89a", animal.dir, 9, animal.moving, false);
   const u = PX_UNIT;
   const baseY = Math.round(animal.pixelY + TILE_SIZE - 2 * u);
   const cx = Math.round(animal.pixelX + TILE_SIZE / 2);
@@ -775,6 +974,27 @@ function drawRabbit(ctx, animal) {
   ctx.fillStyle = "#e8d9c5";
   ctx.fillRect(cx - 3 * u, baseY - 9 * u, u, u);
   ctx.fillRect(cx + 2 * u, baseY - 9 * u, u, u);
+
+  // A small HP bar, same idea as a field monster's but scaled down - only
+  // shown once it's taken a hit, so an unharmed rabbit stays uncluttered.
+  const maxHp = RABBIT_MAX_HP;
+  if (animal.currentHp != null && animal.currentHp < maxHp) {
+    const barW = 22;
+    drawBar(ctx, cx - barW / 2, animal.pixelY - 12, barW, 4, animal.currentHp / maxHp, "#4fae5a");
+  }
+
+  if (animal.floatText && performance.now() < animal.floatText.until) {
+    const remaining = animal.floatText.until - performance.now();
+    const age = 1 - remaining / 700;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - age);
+    ctx.fillStyle = "#ffdf7a";
+    ctx.font = "bold 12px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(animal.floatText.text, cx, animal.pixelY - 18 - age * 12);
+    ctx.textAlign = "left";
+    ctx.restore();
+  }
 }
 
 // Small pixel-fantasy humanoid, built on an 8x10-unit grid (unit = TILE_SIZE

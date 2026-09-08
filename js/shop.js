@@ -63,8 +63,14 @@ function updateShop(state) {
   if (Input.clickPos) {
     const slotHit = (state.uiHitboxes.shopSlots || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
     if (slotHit) {
-      state.shop.cursor = slotHit.idx;
-      tradeShopItem(state, listing[slotHit.idx]);
+      // First click on a slot just selects it (matches keyboard browsing);
+      // a second click on the already-selected slot trades it - so a stray
+      // click doesn't instantly spend gold on something you meant to inspect.
+      if (state.shop.cursor === slotHit.idx) {
+        tradeShopItem(state, listing[slotHit.idx]);
+      } else {
+        state.shop.cursor = slotHit.idx;
+      }
       Input.clickPos = null;
     }
   }

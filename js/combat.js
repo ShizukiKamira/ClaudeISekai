@@ -105,6 +105,23 @@ function advanceTurnForAction(state) {
   updateMonstersTurn(state);
 }
 
+// Turns the player to face whichever cardinal direction the mouse cursor
+// currently sits in, relative to their own tile - called right before an
+// attack resolves so melee and fireball both aim where the player is
+// pointing rather than only their last movement direction.
+function aimTowardMouse(state) {
+  const p = state.player;
+  const worldTile = screenToTile(Input.mousePos);
+  const dx = worldTile.x - p.tileX;
+  const dy = worldTile.y - p.tileY;
+  if (dx === 0 && dy === 0) return; // mouse is over the player's own tile - keep current facing
+  if (Math.abs(dx) > Math.abs(dy)) {
+    p.dir = dx > 0 ? "right" : "left";
+  } else {
+    p.dir = dy > 0 ? "down" : "up";
+  }
+}
+
 // F always swings a melee attack, regardless of class - a mage's active
 // skill (e.g. Fireball) is cast from the hotbar instead, via a number key.
 function tryPlayerAttack(state) {
@@ -113,6 +130,9 @@ function tryPlayerAttack(state) {
   const now = performance.now();
   if (now < p.attackCooldownUntil) return;
 
+  aimTowardMouse(state);
+  const weaponKind = getWeaponKind(p);
+  p.meleeAnimKind = weaponKind === "staff" ? "staff" : weaponKind ? "blade" : "fists";
   p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
   p.lastAttackAt = now;
   resetOutOfCombat(state);
@@ -128,11 +148,12 @@ function tryPlayerAttack(state) {
     damageMonster(state, m, dmg);
   }
 
-  // Rabbits are harmless and never fight back - a swing that lands on one
-  // hunts it down outright, same yield as checking a loaded trap.
+  // Rabbits are unarmored and never fight back, but otherwise take damage
+  // just like a field monster - the direct alternative to a loaded trap.
   const rabbitHits = state.animals.filter((a) => a.kind === "rabbit" && tiles.some((t) => t.x === a.tileX && t.y === a.tileY));
   for (const a of rabbitHits) {
-    killRabbit(state, a);
+    const dmg = Math.max(2, playerAtk(p) + rollVariance());
+    damageAnimal(state, a, dmg);
   }
 
   advanceTurnForAction(state);
@@ -191,6 +212,11 @@ function castHotbarSkill(state, slotIndex) {
       state.worldFlashUntil = now + 1000;
       return;
     }
+    aimTowardMouse(state);
+    // A blade can't channel magic - casting always uses the barehanded gesture
+    // unless a staff is actually equipped, even for a mage holding a sword.
+    p.castAnimKind = getWeaponKind(p) === "staff" ? "staff" : "hands";
+    p.lastCastAt = now;
     p.mp -= FIREBALL_MP_COST;
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
     resetOutOfCombat(state);
@@ -225,6 +251,12 @@ function updateProjectiles(state, dt) {
     if (hit) {
       const dmg = Math.max(4, proj.dmgBase - hit.enemy.def + rollVariance());
       damageMonster(state, hit, dmg);
+      return false;
+    }
+    const hitAnimal = state.animals.find((a) => a.kind === "rabbit" && a.tileX === tileX && a.tileY === tileY);
+    if (hitAnimal) {
+      const dmg = Math.max(4, proj.dmgBase + rollVariance());
+      damageAnimal(state, hitAnimal, dmg);
       return false;
     }
     return true;

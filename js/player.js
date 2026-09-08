@@ -28,6 +28,9 @@ function createPlayer() {
     crouching: false,
     attackCooldownUntil: 0,
     lastAttackAt: -Infinity,
+    meleeAnimKind: "fists", // "blade" | "staff" | "fists" - set at swing time, drives the melee animation
+    lastCastAt: -Infinity,
+    castAnimKind: "hands", // "staff" | "hands" - set at cast time, drives the fireball cast animation
     fatalParryUsedAt: -Infinity,
     lastToolSwingAt: -Infinity,
     toolSwingType: null, // "axe" | "pickaxe", set alongside lastToolSwingAt
@@ -46,6 +49,13 @@ function createPlayer() {
 function playerAtk(player) {
   const bonus = player.weapon ? ITEMS[player.weapon].atkBonus || 0 : 0;
   return player.baseAtk + bonus;
+}
+
+// "sword" | "dagger" | "staff" | null (barehanded) - drives which melee/cast
+// animation and in-hand sprite to use, independent of class: a mage who has
+// equipped a sword swings it like a sword, not a staff, and vice versa.
+function getWeaponKind(player) {
+  return player.weapon ? ITEMS[player.weapon].weaponKind || null : null;
 }
 
 function playerDef(player) {

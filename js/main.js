@@ -303,6 +303,82 @@ function updateClassSelect() {
   }
 }
 
+// Finds whichever NPC or placed object sits at the given tile, if any -
+// shared by the facing+Enter interact chain and the click-at-range one.
+function findInteractableAt(state, x, y) {
+  const npc = findNpcAt(state, x, y);
+  if (npc) return { npc };
+  const obj = state.placedObjects.find((o) => o.x === x && o.y === y);
+  if (obj) return { obj };
+  return null;
+}
+
+// Opens whatever a target resolves to - a shop or dialogue for an NPC, the
+// matching UI/interaction for a placed object. Returns true if it recognized
+// and handled the target, so callers can fall back to other behavior (e.g.
+// the tile-based gather chain) when it's something with no interaction of
+// its own (a bridge, say).
+function performInteraction(state, target) {
+  if (target.npc) {
+    const npc = target.npc;
+    if (npc.shop) {
+      state.mode = "SHOP";
+      state.shop.mode = "buy";
+      state.shop.filterIndex = 0;
+      state.shop.cursor = 0;
+    } else {
+      Dialogue.show(npc.dialogue, {
+        speaker: npc.name,
+        onComplete: () => npc.onComplete && npc.onComplete(state),
+      });
+    }
+    return true;
+  }
+
+  const obj = target.obj;
+  if (obj.type === "campfire") {
+    handleCampfireInteract(state);
+    return true;
+  }
+  if (obj.type === "crafting_table") {
+    state.mode = "MENU";
+    state.menuTab = "crafting";
+    state.menuCursor = 0;
+    state.craftCursor = 0;
+    return true;
+  }
+  if (obj.type === "bed") {
+    handleBedInteract(state);
+    return true;
+  }
+  if (obj.type === "basic_trap") {
+    handleTrapInteract(state, obj);
+    return true;
+  }
+  if (obj.type === "chest" && obj.contents) {
+    state.mode = "CHEST";
+    state.chestTarget = { x: obj.x, y: obj.y };
+    state.chestSelected = null;
+    state.chestLastClick = null;
+    state.chestPrompt = null;
+    state.chestInvScroll = 0;
+    state.chestBoxScroll = 0;
+    return true;
+  }
+  if (obj.type === "furnace") {
+    // A click always gets the short-press "open the smelting UI" behavior -
+    // the long-press-to-pick-up hold mechanic only makes sense for a facing
+    // Enter press (see updateFurnaceHold), not an at-range click.
+    openFurnace(state, obj);
+    return true;
+  }
+  if (HOME_FLAVOR_TEXT[obj.type]) {
+    Dialogue.show([HOME_FLAVOR_TEXT[obj.type]]);
+    return true;
+  }
+  return false;
+}
+
 function updateOverworld(dt) {
   updateMonsterAnimations(state, dt);
   updateAnimalAnimations(state, dt);
@@ -358,6 +434,20 @@ function updateOverworld(dt) {
     }
   }
 
+  // Clicking directly on an NPC or a placed object (crafting table, chest,
+  // furnace, trap, bed) within INTERACT_CLICK_RANGE tiles opens it right
+  // away, without needing to walk up and face it first.
+  if (Input.clickPos && !Dialogue.active) {
+    const clicked = screenToTile(Input.clickPos);
+    const withinRange = chebyshevDist(clicked.x, clicked.y, state.player.tileX, state.player.tileY) <= INTERACT_CLICK_RANGE;
+    if (withinRange) {
+      const interactTarget = findInteractableAt(state, clicked.x, clicked.y);
+      if (interactTarget && performInteraction(state, interactTarget)) {
+        Input.clickPos = null;
+      }
+    }
+  }
+
   tryMovePlayer(state, dt);
 
   const target = facingTile(state.player);
@@ -373,40 +463,12 @@ function updateOverworld(dt) {
 
   if (!facingFurnace && Input.confirmPressed() && !state.player.moving) {
     const npc = findNpcAt(state, target.x, target.y);
-    if (npc) {
-      if (npc.shop) {
-        state.mode = "SHOP";
-        state.shop.mode = "buy";
-        state.shop.filterIndex = 0;
-        state.shop.cursor = 0;
-      } else {
-        Dialogue.show(npc.dialogue, {
-          speaker: npc.name,
-          onComplete: () => npc.onComplete && npc.onComplete(state),
-        });
-      }
-    } else if (placedAtTarget && placedAtTarget.type === "campfire") {
-      handleCampfireInteract(state);
-    } else if (placedAtTarget && placedAtTarget.type === "crafting_table") {
-      state.mode = "MENU";
-      state.menuTab = "crafting";
-      state.menuCursor = 0;
-      state.craftCursor = 0;
-    } else if (placedAtTarget && placedAtTarget.type === "bed") {
-      handleBedInteract(state);
-    } else if (placedAtTarget && placedAtTarget.type === "basic_trap") {
-      handleTrapInteract(state, placedAtTarget);
-    } else if (placedAtTarget && placedAtTarget.type === "chest" && placedAtTarget.contents) {
-      state.mode = "CHEST";
-      state.chestTarget = { x: placedAtTarget.x, y: placedAtTarget.y };
-      state.chestSelected = null;
-      state.chestLastClick = null;
-      state.chestPrompt = null;
-      state.chestInvScroll = 0;
-      state.chestBoxScroll = 0;
-    } else if (placedAtTarget && HOME_FLAVOR_TEXT[placedAtTarget.type]) {
-      Dialogue.show([HOME_FLAVOR_TEXT[placedAtTarget.type]]);
-    } else {
+    const handled = npc
+      ? performInteraction(state, { npc })
+      : placedAtTarget
+      ? performInteraction(state, { obj: placedAtTarget })
+      : false;
+    if (!handled) {
       const tile = state.map[target.y] && state.map[target.y][target.x];
       if (tile === TILE.TREE && !isBorderTile(target.x, target.y)) {
         hitResourceNode(state, target.x, target.y, TILE.TREE);
@@ -720,7 +782,7 @@ function renderNightOverlay(state) {
 
 function renderHud() {
   const p = state.player;
-  const boxX = 8, boxY = 8, boxW = 210, boxH = 140;
+  const boxX = 8, boxY = 8, boxW = 210, boxH = 96;
   ctx.fillStyle = "rgba(10,14,12,0.78)";
   ctx.fillRect(boxX, boxY, boxW, boxH);
   ctx.strokeStyle = "#e8c97a";
@@ -749,21 +811,6 @@ function renderHud() {
 
   ctx.fillText(`MP ${p.mp}/${p.maxMp}`, innerX, sy);
   drawBar(ctx, innerX, sy + 3, barW, 9, p.mp / p.maxMp, "#4f8dae");
-  sy += 24;
-
-  ctx.fillText(`EXP ${p.exp}/${p.expToNext}`, innerX, sy);
-  drawBar(ctx, innerX, sy + 3, barW, 7, p.exp / p.expToNext, "#8e6fce");
-  sy += 22;
-
-  ctx.font = "10px 'Segoe UI', sans-serif";
-  ctx.fillStyle = p.hunger <= 0 ? "#e88a5a" : "#f2f2ec";
-  ctx.fillText(`Hunger ${Math.ceil(p.hunger)}/${HUNGER_MAX}`, innerX, sy);
-  drawBar(ctx, innerX, sy + 3, barW, 6, p.hunger / HUNGER_MAX, "#c9a03a");
-  sy += 17;
-
-  ctx.fillStyle = p.thirst <= 0 ? "#e88a5a" : "#f2f2ec";
-  ctx.fillText(`Thirst ${Math.ceil(p.thirst)}/${THIRST_MAX}`, innerX, sy);
-  drawBar(ctx, innerX, sy + 3, barW, 6, p.thirst / THIRST_MAX, "#4f8dae");
 
   ctx.fillStyle = "#cfd8cf";
   ctx.font = "12px 'Segoe UI', sans-serif";
@@ -811,7 +858,39 @@ function renderHud() {
     ctx.textAlign = "left";
   }
 
+  renderStatBarsAboveHotbar(ctx, state);
   renderHotbar(ctx, state);
+}
+
+// EXP, Hunger, and Thirst live here instead of the top-left HUD box, stacked
+// directly above the hotbar (EXP on top) and aligned to its same width so
+// the whole cluster reads as one unit.
+function renderStatBarsAboveHotbar(ctx, state) {
+  const p = state.player;
+  const hotbarSlotSize = 34, hotbarGap = 6;
+  const totalW = HOTBAR_SIZE * hotbarSlotSize + (HOTBAR_SIZE - 1) * hotbarGap;
+  const startX = (canvas.width - totalW) / 2;
+  const hotbarY = canvas.height - hotbarSlotSize - 36;
+
+  const rowH = 17;
+  const barH = 6;
+  let sy = hotbarY - 8 - rowH * 3 + 10;
+
+  ctx.font = "10px 'Segoe UI', sans-serif";
+
+  ctx.fillStyle = "#cfd8cf";
+  ctx.fillText(`EXP ${p.exp}/${p.expToNext}`, startX, sy);
+  drawBar(ctx, startX, sy + 3, totalW, barH, p.exp / p.expToNext, "#8e6fce");
+  sy += rowH;
+
+  ctx.fillStyle = p.hunger <= 0 ? "#e88a5a" : "#f2f2ec";
+  ctx.fillText(`Hunger ${Math.ceil(p.hunger)}/${HUNGER_MAX}`, startX, sy);
+  drawBar(ctx, startX, sy + 3, totalW, barH, p.hunger / HUNGER_MAX, "#c9a03a");
+  sy += rowH;
+
+  ctx.fillStyle = p.thirst <= 0 ? "#e88a5a" : "#f2f2ec";
+  ctx.fillText(`Thirst ${Math.ceil(p.thirst)}/${THIRST_MAX}`, startX, sy);
+  drawBar(ctx, startX, sy + 3, totalW, barH, p.thirst / THIRST_MAX, "#4f8dae");
 }
 
 function renderMenu() {
