@@ -37,6 +37,7 @@ function smelt(state, recipe) {
   addItem(state, recipe.result, recipe.resultQty);
   state.menuFlashMessage = `${recipe.verb || "Smelted"} ${ITEMS[recipe.result].name} (used ${ITEMS[fuel].name} as fuel).`;
   state.menuFlashUntil = performance.now() + 1600;
+  logEvent(state, state.menuFlashMessage, "loot");
 }
 
 function updateFurnaceUI(state) {
@@ -134,6 +135,7 @@ function pickUpFurnace(state, furnaceObj) {
   addItem(state, "furnace", 1);
   state.worldFlashMessage = "Picked up the Furnace.";
   state.worldFlashUntil = performance.now() + 1400;
+  logEvent(state, state.worldFlashMessage, "info");
 }
 
 function updateFurnaceHold(state, furnaceObj) {

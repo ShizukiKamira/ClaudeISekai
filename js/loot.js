@@ -59,9 +59,11 @@ function findNearestCorpse(state, px, py, range) {
 
 function lootCorpseAll(state, corpse) {
   for (const entry of corpse.items) addItem(state, entry.item, entry.qty);
+  const summary = corpse.items.map((e) => `${e.qty}x ${ITEMS[e.item] ? ITEMS[e.item].name : e.item}`).join(", ");
   state.corpses = state.corpses.filter((c) => c !== corpse);
   state.worldFlashMessage = `Looted ${corpse.label}.`;
   state.worldFlashUntil = performance.now() + 1400;
+  logEvent(state, `Looted ${corpse.label}: ${summary}.`, "loot");
 }
 
 function openCorpseLoot(state, corpse) {
@@ -101,6 +103,7 @@ function updateCorpseLoot(state) {
       const entry = corpse.items[slotHit.idx];
       if (entry) {
         addItem(state, entry.item, entry.qty);
+        logEvent(state, `Looted ${entry.qty}x ${ITEMS[entry.item] ? ITEMS[entry.item].name : entry.item}.`, "loot");
         corpse.items = corpse.items.filter((e) => e !== entry);
         if (corpse.items.length === 0) {
           state.corpses = state.corpses.filter((c) => c !== corpse);
@@ -190,6 +193,7 @@ function confirmStorePrompt(state) {
   addItem(state, obj.type, 1);
   state.worldFlashMessage = `Stored ${ITEMS[obj.type] ? ITEMS[obj.type].name : obj.type}.`;
   state.worldFlashUntil = performance.now() + 1400;
+  logEvent(state, state.worldFlashMessage, "info");
 }
 
 function updateStorePrompt(state) {

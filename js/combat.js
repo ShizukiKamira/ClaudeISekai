@@ -97,15 +97,6 @@ function meleeHitTargets(player, entities, getCenter) {
   });
 }
 
-// Attacking doesn't move the player, but it still gives monsters a chance
-// to act - otherwise a player could sit in one spot forever without ever
-// letting other monsters wander, spot them, or the day/night clock advance.
-function advanceTurnForAction(state) {
-  state.turnCount += 1;
-  tryMonsterSpawn(state);
-  tryRabbitSpawn(state);
-}
-
 // Points the player's continuous facing angle straight at wherever the
 // mouse cursor currently sits, in world space - called right before an
 // attack resolves so melee and fireball both aim anywhere around the
@@ -160,8 +151,6 @@ function tryPlayerAttack(state) {
     const dmg = Math.max(2, playerAtk(p) + rollVariance());
     damageAnimal(state, a, dmg);
   }
-
-  advanceTurnForAction(state);
 }
 
 // Dispatches a hotbar slot press/click to whichever it holds: the class's
@@ -226,7 +215,6 @@ function castHotbarSkill(state, slotIndex) {
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
     resetOutOfCombat(state);
     spawnFireball(state, p);
-    advanceTurnForAction(state);
   }
 }
 
@@ -312,12 +300,14 @@ function resolveMonsterAttack(state, monster) {
   if (parry.parried) {
     state.worldFlashMessage = parry.fatal ? "You parry the killing blow!" : "You parry the attack!";
     state.worldFlashUntil = performance.now() + 1000;
+    logEvent(state, state.worldFlashMessage, "heal");
     return;
   }
 
   p.hp = Math.max(0, p.hp - dmg);
   state.worldFlashMessage = `${msg} -${dmg} HP`;
   state.worldFlashUntil = performance.now() + 1000;
+  logEvent(state, state.worldFlashMessage, "damage");
   if (p.hp <= 0) {
     state.mode = "GAMEOVER";
   }
@@ -329,6 +319,7 @@ function damageMonster(state, monster, dmg) {
   monster.currentHp = Math.max(0, monster.currentHp - dmg);
   monster.hitFlashUntil = performance.now() + 150;
   monster.floatText = { text: `-${dmg}`, until: performance.now() + 700 };
+  logEvent(state, `Hit ${monster.enemy.name} for ${dmg} damage.`, "damage");
   // Getting hit (a fireball landing from range, say) wakes the monster up
   // even if it hadn't spotted the player yet - it comes to fight back.
   if (!monster.alert) {
@@ -385,6 +376,7 @@ function defeatMonster(state, monster) {
     msg += ` It dropped something - loot the corpse.`;
   }
   if (levelMsgs.length) msg += ` ${levelMsgs[levelMsgs.length - 1]}`;
+  logEvent(state, `Defeated ${enemy.name}! +${enemy.exp} EXP, +${enemy.gold} gold.`, "kill");
 
   if (monster.isBoss) {
     state.flags.bossDefeated = true;

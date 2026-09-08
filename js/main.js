@@ -18,6 +18,8 @@ function createInitialState() {
     storePrompt: null, // { x, y, type } of a placed object pending a "store it?" confirm
     forageEffects: [], // brief sparkle bursts played where a forage just yielded loot
     dragging: null, // { from: "inv"|"hotbar", idx, itemId } while the inventory/hotbar drag is in progress
+    eventLog: [], // { text, kind, at } - a running record of loot/damage/kills/etc, shown top-left
+    eventLogMinimized: false,
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -26,6 +28,7 @@ function createInitialState() {
     player: createPlayer(),
     flags: { metFox: false, bossDefeated: false },
     turnCount: 0,
+    tickAccumMs: 0, // real ms accumulated toward the next TICK_INTERVAL_MS game tick
     titleCursor: 0,
     classCursor: 0,
     menuCursor: 0,
@@ -400,6 +403,11 @@ function performInteraction(state, target) {
 }
 
 function updateOverworld(dt) {
+  // Runs unconditionally, even while a dialogue textbox is up, so the clock,
+  // hunger/thirst, regen, and spawns all keep advancing on real elapsed
+  // time - not just while the player is actively walking.
+  accumulateGameTicks(state, dt * 1000);
+
   if (Dialogue.active) {
     Dialogue.update();
     return;
@@ -408,6 +416,14 @@ function updateOverworld(dt) {
   updateMonstersMovement(state, dt);
   updateAnimalsMovement(state, dt);
   updateDashCharges(state);
+
+  if (Input.clickPos) {
+    const toggleHit = (state.uiHitboxes.eventLogToggle || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    if (toggleHit) {
+      state.eventLogMinimized = !state.eventLogMinimized;
+      Input.clickPos = null;
+    }
+  }
 
   if (state.placingItem) {
     updatePlacing(dt);
@@ -594,7 +610,6 @@ function placePlayerAt(state, x, y, dir) {
   p.dir = dir;
   p.facingAngle = Math.atan2(dir8Vec(dir)[1], dir8Vec(dir)[0]);
   p.dash = null;
-  p.distanceAccum = 0;
 }
 
 // Toggles between the overworld and the player's home interior. Stepping
@@ -949,10 +964,16 @@ function renderHud() {
     ctx.textAlign = "left";
   }
 
-  renderStatBarsAboveHotbar(ctx, state);
-  renderHotbar(ctx, state);
+  // The hotbar/stat-bar cluster sits low enough on screen to overlap the
+  // dialogue textbox (e.g. a forage result) - hide it while text is up so
+  // there's nothing to read through.
+  if (!Dialogue.active) {
+    renderStatBarsAboveHotbar(ctx, state);
+    renderHotbar(ctx, state);
+  }
   renderStorePrompt(ctx, state, canvas.width, canvas.height);
   renderDashHud(ctx, state);
+  renderEventLog(ctx, state);
 }
 
 // Dash charge pips, drawn just under the top-left HUD box - filled gold for
@@ -976,6 +997,80 @@ function renderDashHud(ctx, state) {
       ctx.lineWidth = 1.5;
       ctx.stroke();
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Event log: a running record of "everything that's happened" (loot, damage
+// taken/dealt, kills, forage/fishing/crafting results, ...), shown as a
+// small scrollable panel in the top-left with a "-"/"+" minimize toggle.
+// ---------------------------------------------------------------------------
+
+const EVENT_LOG_MAX = 60;
+const EVENT_LOG_VISIBLE_LINES = 9;
+const EVENT_LOG_COLORS = {
+  info: "#f2f2ec",
+  loot: "#e8c97a",
+  damage: "#e88a5a",
+  heal: "#7cd68a",
+  kill: "#c9a03a",
+};
+
+function logEvent(state, text, kind = "info") {
+  state.eventLog.push({ text, kind, at: performance.now() });
+  if (state.eventLog.length > EVENT_LOG_MAX) state.eventLog.shift();
+}
+
+function renderEventLog(ctx, state) {
+  const x = 8, y = 128, w = 230;
+  const headerH = 20;
+
+  state.uiHitboxes.eventLogToggle = [];
+  ctx.fillStyle = "rgba(10,14,12,0.85)";
+  ctx.fillRect(x, y, w, headerH);
+  ctx.strokeStyle = "#e8c97a";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, headerH);
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 11px 'Segoe UI', sans-serif";
+  ctx.fillText("Log", x + 8, y + 14);
+
+  const btnSize = 16;
+  const btnX = x + w - btnSize - 2, btnY = y + 2;
+  ctx.fillStyle = "rgba(232,201,122,0.18)";
+  ctx.fillRect(btnX, btnY, btnSize, btnSize);
+  ctx.strokeStyle = "#e8c97a";
+  ctx.strokeRect(btnX, btnY, btnSize, btnSize);
+  ctx.fillStyle = "#f2f2ec";
+  ctx.font = "bold 13px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText(state.eventLogMinimized ? "+" : "-", btnX + btnSize / 2, btnY + 12);
+  ctx.textAlign = "left";
+  state.uiHitboxes.eventLogToggle.push({ x: btnX, y: btnY, w: btnSize, h: btnSize });
+
+  if (state.eventLogMinimized) return;
+
+  const lineH = 13;
+  const bodyH = EVENT_LOG_VISIBLE_LINES * lineH + 8;
+  const bodyY = y + headerH;
+  ctx.fillStyle = "rgba(10,14,12,0.72)";
+  ctx.fillRect(x, bodyY, w, bodyH);
+  ctx.strokeStyle = "rgba(232,201,122,0.4)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, bodyY, w, bodyH);
+
+  ctx.font = "10px 'Segoe UI', sans-serif";
+  const entries = state.eventLog.slice(-EVENT_LOG_VISIBLE_LINES);
+  let ly = bodyY + 12;
+  for (const entry of entries) {
+    ctx.fillStyle = EVENT_LOG_COLORS[entry.kind] || EVENT_LOG_COLORS.info;
+    let text = entry.text;
+    while (ctx.measureText(text).width > w - 16 && text.length > 3) {
+      text = text.slice(0, -2);
+    }
+    if (text !== entry.text) text += "…";
+    ctx.fillText(text, x + 8, ly);
+    ly += lineH;
   }
 }
 

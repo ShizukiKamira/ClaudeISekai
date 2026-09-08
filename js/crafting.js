@@ -49,6 +49,7 @@ function craftRecipe(state, recipe) {
   addItem(state, recipe.result, recipe.resultQty);
   state.menuFlashMessage = `Crafted ${ITEMS[recipe.result].name}.`;
   state.menuFlashUntil = performance.now() + 1400;
+  logEvent(state, state.menuFlashMessage, "loot");
 }
 
 // Shared by update (to decide scroll clamping/follow) and render (to lay out

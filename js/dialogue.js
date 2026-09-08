@@ -30,7 +30,10 @@ const Dialogue = {
 
   update() {
     if (!this.active) return;
-    if (Input.confirmPressed()) this.advance();
+    if (Input.confirmPressed() || Input.clickPos) {
+      Input.clickPos = null;
+      this.advance();
+    }
   },
 
   render(ctx, canvasW, canvasH) {
@@ -59,7 +62,7 @@ const Dialogue = {
 
     ctx.fillStyle = "#bdbdb0";
     ctx.font = "13px 'Segoe UI', sans-serif";
-    ctx.fillText("Enter / Space to continue", canvasW - 200, boxY + boxH - 14);
+    ctx.fillText("Enter / Space / click to continue", canvasW - 220, boxY + boxH - 14);
   },
 };
 

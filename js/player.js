@@ -12,7 +12,6 @@ function createPlayer() {
     dir: "down",
     facingAngle: Math.PI / 2, // continuous facing, in radians - drives aiming/animation; dir is derived from it
     moveSpeed: PLAYER_MOVE_SPEED,
-    distanceAccum: 0, // px walked since the last movement "tick" (hunger/thirst/day-night/spawns)
     _lastTileX: PLAYER_START.x,
     _lastTileY: PLAYER_START.y,
     level: 1,
@@ -88,7 +87,9 @@ function grantExp(state, amount) {
     p.baseDef += 1;
     p.hp = p.maxHp;
     p.mp = p.maxMp;
-    messages.push(`Level up! You are now level ${p.level}.`);
+    const levelMsg = `Level up! You are now level ${p.level}.`;
+    messages.push(levelMsg);
+    logEvent(state, levelMsg, "heal");
   }
   return messages;
 }
@@ -285,43 +286,35 @@ function tryMovePlayer(state, dt) {
   player.dir = angleToDir8(angle);
 
   const speed = effectivePlayerSpeed(player);
-  const beforeX = player.pixelX, beforeY = player.pixelY;
   player.moving = moveWithCollision(state, player, move.x * speed, move.y * speed, dt, PLAYER_RADIUS);
   updateDerivedTile(player);
-  if (player.moving) {
-    const traveled = dist2D(player.pixelX, player.pixelY, beforeX, beforeY);
-    accumulateMovementTicks(state, traveled);
+}
+
+// Fires once every TICK_INTERVAL_MS of real elapsed time, regardless of
+// whether the player is walking, standing still, fighting, or reading a
+// textbox - called unconditionally every frame from updateOverworld so the
+// clock, hunger/thirst, regen, and spawn rolls are all driven by real time
+// rather than distance walked. This means a player who just stands still can
+// still wait out HP/MP regen, and the day/night cycle keeps advancing either
+// way.
+function accumulateGameTicks(state, dtMs) {
+  if (state.mode === "GAMEOVER") return;
+  state.tickAccumMs += dtMs;
+  while (state.tickAccumMs >= TICK_INTERVAL_MS) {
+    state.tickAccumMs -= TICK_INTERVAL_MS;
+    fireGameTick(state);
+    if (state.mode === "GAMEOVER") return;
   }
 }
 
-// Fires once per TILE_SIZE px of actual movement - the free-movement
-// replacement for the old "once per tile arrived" turn trigger.
-function accumulateMovementTicks(state, traveled) {
-  const p = state.player;
-  p.distanceAccum += traveled;
-  while (p.distanceAccum >= TILE_SIZE) {
-    p.distanceAccum -= TILE_SIZE;
-    fireMovementTick(state);
-  }
-}
-
-function fireMovementTick(state) {
-  state.turnCount += state.player.crouching ? 3 : 1;
+function fireGameTick(state) {
+  state.turnCount += 1;
   tickOutOfCombatRegen(state);
   tickHungerThirst(state);
   if (state.mode === "GAMEOVER") return;
   tryMonsterSpawn(state);
   tryRabbitSpawn(state);
   updateTraps(state);
-}
-
-// Attacking/casting doesn't move the player, but should still tick the
-// clock and give spawns a chance to roll - the free-movement equivalent of
-// the old "advance a turn for a stationary action".
-function advanceTurnForAction(state) {
-  state.turnCount += 1;
-  tryMonsterSpawn(state);
-  tryRabbitSpawn(state);
 }
 
 // Continuous-movement replacement for onPlayerArrivedTile's per-tile
@@ -403,6 +396,7 @@ function checkItemPickup(state) {
       addItem(state, itemId, pickup.qty);
       const itemName = itemId === "gold" ? `${pickup.qty} Gold` : ITEMS[itemId].name;
       Dialogue.show([`You found ${itemName}!`]);
+      logEvent(state, `Found ${itemName}!`, "loot");
     }
   }
 }
@@ -479,10 +473,8 @@ function updateDash(state, dt) {
   const d = p.dash;
   const t = Math.min(1, (performance.now() - d.startedAt) / DASH_DURATION_MS);
   const eased = easeOutCubic(t);
-  const beforeX = p.pixelX, beforeY = p.pixelY;
   p.pixelX = d.fromX + (d.toX - d.fromX) * eased;
   p.pixelY = d.fromY + (d.toY - d.fromY) * eased;
   p.moving = true;
-  accumulateMovementTicks(state, dist2D(p.pixelX, p.pixelY, beforeX, beforeY));
   if (t >= 1) p.dash = null;
 }

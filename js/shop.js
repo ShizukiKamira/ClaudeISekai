@@ -85,6 +85,7 @@ function tradeShopItem(state, entry) {
       p.gold -= entry.price;
       addItem(state, entry.item, 1);
       state.shopFlashMessage = `Bought ${ITEMS[entry.item].name}.`;
+      logEvent(state, `Bought ${ITEMS[entry.item].name} for ${entry.price} gold.`, "loot");
     }
   } else {
     p.gold += entry.price;
@@ -98,6 +99,7 @@ function tradeShopItem(state, entry) {
       }
     }
     state.shopFlashMessage = `Sold ${ITEMS[entry.item].name}.`;
+    logEvent(state, `Sold ${ITEMS[entry.item].name} for ${entry.price} gold.`, "info");
   }
   state.shopFlashUntil = performance.now() + 1200;
 }

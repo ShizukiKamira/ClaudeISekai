@@ -17,6 +17,7 @@ function tickHungerThirst(state) {
       ? "You're dehydrated! -1 HP"
       : "You're starving! -1 HP";
     state.worldFlashUntil = performance.now() + 1200;
+    logEvent(state, state.worldFlashMessage, "damage");
     if (p.hp <= 0) state.mode = "GAMEOVER";
   }
 }
@@ -44,6 +45,7 @@ function fillFlaskWithDirtyWater(state) {
   if (entry.qty <= 0) state.player.inventory = state.player.inventory.filter((i) => i.qty > 0);
   addItem(state, "dirty_water", 1);
   Dialogue.show(["You fill the flask with murky water from the lake."]);
+  logEvent(state, "Filled the flask with dirty water.", "loot");
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +152,7 @@ function killRabbit(state, animal) {
   spawnCorpse(state, animal.pixelX + TILE_SIZE / 2, animal.pixelY + TILE_SIZE / 2, [{ item: "rabbit_meat", qty: 1 }], "Rabbit Corpse");
   state.worldFlashMessage = "You hunted a rabbit! Loot the corpse for meat.";
   state.worldFlashUntil = performance.now() + 1400;
+  logEvent(state, "Hunted a rabbit.", "kill");
 }
 
 // A trap catches any rabbit currently adjacent to it with a flat per-tick
@@ -183,6 +186,7 @@ function handleTrapInteract(state, trapObj) {
     trapObj.loaded = false;
     addItem(state, "rabbit_meat", 1);
     Dialogue.show(["You check the trap - a rabbit! You collect the meat and reset the snare."]);
+    logEvent(state, "Collected a rabbit from the trap.", "loot");
   } else {
     Dialogue.show(["The trap is empty. Wait for a rabbit to wander close."]);
   }

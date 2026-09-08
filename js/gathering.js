@@ -39,7 +39,9 @@ function hitResourceNode(state, x, y, tileType) {
     const sticks = 2 + Math.floor(Math.random() * 2); // 2-3
     addItem(state, "log", logs);
     addItem(state, "stick", sticks);
-    Dialogue.show([`You chop down the tree. Found ${logs} Log${logs > 1 ? "s" : ""} and ${sticks} Stick${sticks > 1 ? "s" : ""}.`]);
+    const treeMsg = `You chop down the tree. Found ${logs} Log${logs > 1 ? "s" : ""} and ${sticks} Stick${sticks > 1 ? "s" : ""}.`;
+    Dialogue.show([treeMsg]);
+    logEvent(state, treeMsg, "loot");
   } else {
     const stone = 2 + Math.floor(Math.random() * 2); // 2-3
     const oreType = Math.random() < 0.5 ? "iron_ore" : "copper_ore";
@@ -49,7 +51,9 @@ function hitResourceNode(state, x, y, tileType) {
     if (oreQty > 0) addItem(state, oreType, oreQty);
     addItem(state, "flint", flint);
     const oreMsg = oreQty > 0 ? ` and ${oreQty} ${ITEMS[oreType].name}` : "";
-    Dialogue.show([`You mine the boulder. Found ${stone} Stone, ${flint} Flint${oreMsg}.`]);
+    const mineMsg = `You mine the boulder. Found ${stone} Stone, ${flint} Flint${oreMsg}.`;
+    Dialogue.show([mineMsg]);
+    logEvent(state, mineMsg, "loot");
   }
 }
 
@@ -122,6 +126,7 @@ function handleForage(state, x, y) {
   let msg = `You forage and find: ${gained.join(", ")}.`;
   if (bonuses.length) msg += ` Lucky find: ${bonuses.join(", ")}!`;
   Dialogue.show([msg]);
+  logEvent(state, msg, "loot");
 }
 
 function handleBedInteract(state) {

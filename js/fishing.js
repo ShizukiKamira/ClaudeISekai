@@ -31,6 +31,7 @@ function cancelFishing(state, message) {
   if (message) {
     state.worldFlashMessage = message;
     state.worldFlashUntil = performance.now() + 1500;
+    logEvent(state, message, "info");
   }
 }
 
@@ -39,6 +40,7 @@ function resolveCatch(state) {
   addItem(state, fishId, 1);
   state.fishing.active = false;
   Dialogue.show([`You caught a ${ITEMS[fishId].name}!`]);
+  logEvent(state, `Caught a ${ITEMS[fishId].name}!`, "loot");
 }
 
 function startFishMinigame(state) {
@@ -63,9 +65,11 @@ function updateFishMinigame(state, dt) {
     f.fishTargetPos = Math.random();
     f.fishRetargetAt = now + (700 - f.difficulty * 400) + Math.random() * 400;
   }
-  const fishSpeed = 0.55 + f.difficulty * 1.9; // fraction of the bar per second
-  const toTarget = f.fishTargetPos - f.fishPos;
-  f.fishPos += Math.sign(toTarget) * Math.min(Math.abs(toTarget), fishSpeed * dt);
+  // Ease toward the target instead of beelining at a capped linear speed -
+  // asymptotic motion can never overshoot or "teleport" regardless of dt
+  // spikes, so the fish always reads as swimming smoothly even when fast.
+  const smoothingRate = 3 + f.difficulty * 4; // higher = snappier, still smooth
+  f.fishPos += (f.fishTargetPos - f.fishPos) * Math.min(1, smoothingRate * dt);
   f.fishPos = Math.max(0, Math.min(1, f.fishPos));
 
   const up = Input.isDown("ArrowUp") || Input.isDown("KeyW");

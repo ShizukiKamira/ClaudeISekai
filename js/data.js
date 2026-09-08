@@ -888,7 +888,18 @@ const GAMEOVER_TEXT = [
 ];
 
 // ---------------------------------------------------------------------------
-// Day/night cycle - driven by tiles moved, not real time or battle turns
+// Game clock: everything that used to advance "once per tile walked" (day/
+// night, hunger/thirst, out-of-combat regen, monster/rabbit spawn rolls, trap
+// checks) now advances once per TICK_INTERVAL_MS of real elapsed time
+// instead, via accumulateGameTicks() in player.js - so the clock keeps
+// moving, monsters keep roaming, and a stationary player still regenerates,
+// whether they're walking, standing still, fighting, or reading a textbox.
+// ---------------------------------------------------------------------------
+
+const TICK_INTERVAL_MS = 300;
+
+// ---------------------------------------------------------------------------
+// Day/night cycle
 // ---------------------------------------------------------------------------
 
 const DAY_LENGTH = 300;
@@ -980,7 +991,7 @@ const FIREBALL_MP_COST = 8;
 const FATAL_PARRY_COOLDOWN_MS = 15000;
 const FURNACE_LONG_PRESS_MS = 700;
 const CROUCH_SPEED_MULT = 0.6; // crouching slows the player further
-const OUT_OF_COMBAT_TILE_THRESHOLD = 5; // tiles walked before regen kicks in
+const OUT_OF_COMBAT_TILE_THRESHOLD = 5; // ticks of no combat before regen kicks in
 const HP_REGEN_PER_TILE = 3;
 const MP_REGEN_PER_TILE = 1;
 const HOTBAR_SIZE = 9;
@@ -1004,8 +1015,8 @@ const POISON_DAMAGE_PER_TICK = 5;
 const POISON_HP_FLOOR = 10;
 
 // ---------------------------------------------------------------------------
-// Survival: hunger/thirst drain slowly as the player walks, restored by
-// eating/drinking. Empty of either starts chipping away at HP.
+// Survival: hunger/thirst drain slowly over time, restored by eating/
+// drinking. Empty of either starts chipping away at HP.
 // ---------------------------------------------------------------------------
 
 const HUNGER_MAX = 100;
@@ -1013,7 +1024,7 @@ const THIRST_MAX = 100;
 const HUNGER_DECAY_PER_TILE = 0.06;
 const THIRST_DECAY_PER_TILE = 0.09;
 const STARVATION_DAMAGE = 1;
-const STARVATION_INTERVAL_TILES = 4; // hunger/thirst at 0 costs 1 HP every N tiles moved
+const STARVATION_INTERVAL_TILES = 4; // hunger/thirst at 0 costs 1 HP every N ticks
 
 // ---------------------------------------------------------------------------
 // Rabbits: harmless critters that wander tall grass, caught with a placed
