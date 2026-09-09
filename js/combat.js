@@ -160,8 +160,8 @@ function activateHotbarSlot(state, slotIndex) {
   const p = state.player;
   const val = p.hotbar[slotIndex];
   if (!val) return;
-  const skill = CLASS_SKILLS[p.class];
-  if (skill && skill.id === val && skill.type === "active") {
+  const skill = findClassSkillById(p.class, val);
+  if (skill && skill.type === "active") {
     castHotbarSkill(state, slotIndex);
   } else if (ITEMS[val] && ITEMS[val].type === "consumable") {
     useHotbarItem(state, slotIndex);
@@ -194,8 +194,8 @@ function castHotbarSkill(state, slotIndex) {
   const p = state.player;
   const skillId = p.hotbar[slotIndex];
   if (!skillId) return;
-  const skill = CLASS_SKILLS[p.class];
-  if (!skill || skill.id !== skillId || skill.type !== "active") return;
+  const skill = findClassSkillById(p.class, skillId);
+  if (!skill || skill.type !== "active") return;
 
   const now = performance.now();
   if (now < p.attackCooldownUntil) return;
@@ -215,24 +215,56 @@ function castHotbarSkill(state, slotIndex) {
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
     resetOutOfCombat(state);
     spawnFireball(state, p);
+  } else if (skillId === "slow") {
+    if (now < p.slowCooldownUntil) {
+      state.worldFlashMessage = "Slow is still cooling down!";
+      state.worldFlashUntil = now + 1000;
+      return;
+    }
+    if (p.mp < SLOW_MP_COST) {
+      state.worldFlashMessage = "Not enough MP!";
+      state.worldFlashUntil = now + 1000;
+      return;
+    }
+    aimTowardMouse(state);
+    p.castAnimKind = getWeaponKind(p) === "staff" ? "staff" : "hands";
+    p.lastCastAt = now;
+    p.mp -= SLOW_MP_COST;
+    p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
+    p.slowCooldownUntil = now + SLOW_COOLDOWN_MS;
+    resetOutOfCombat(state);
+    spawnSlowBolt(state, p);
   }
 }
 
 function spawnFireball(state, player) {
   state.projectiles.push({
+    kind: "fireball",
     x: player.pixelX + TILE_SIZE / 2,
     y: player.pixelY + TILE_SIZE / 2,
     vx: Math.cos(player.facingAngle) * FIREBALL_SPEED,
     vy: Math.sin(player.facingAngle) * FIREBALL_SPEED,
     spawnedAt: performance.now(),
-    dmgBase: Math.floor(playerAtk(player) * 1.6),
+    dmgBase: Math.floor(playerAtk(player) * 1.6 * magicPower(player)),
+  });
+}
+
+function spawnSlowBolt(state, player) {
+  state.projectiles.push({
+    kind: "slow",
+    x: player.pixelX + TILE_SIZE / 2,
+    y: player.pixelY + TILE_SIZE / 2,
+    vx: Math.cos(player.facingAngle) * SLOW_SPEED,
+    vy: Math.sin(player.facingAngle) * SLOW_SPEED,
+    spawnedAt: performance.now(),
   });
 }
 
 function updateProjectiles(state, dt) {
   const now = performance.now();
   state.projectiles = state.projectiles.filter((proj) => {
-    if (now - proj.spawnedAt > FIREBALL_MAX_LIFE_MS) return false;
+    const maxLife = proj.kind === "slow" ? SLOW_MAX_LIFE_MS : FIREBALL_MAX_LIFE_MS;
+    if (now - proj.spawnedAt > maxLife) return false;
     proj.x += proj.vx * dt;
     proj.y += proj.vy * dt;
     const tileX = Math.floor(proj.x / TILE_SIZE);
@@ -241,10 +273,16 @@ function updateProjectiles(state, dt) {
 
     const hit = state.monsters.find((m) => m.tileX === tileX && m.tileY === tileY);
     if (hit) {
-      const dmg = Math.max(4, proj.dmgBase - hit.enemy.def + rollVariance());
-      damageMonster(state, hit, dmg);
+      if (proj.kind === "slow") {
+        applySlow(state, hit);
+      } else {
+        const dmg = Math.max(4, proj.dmgBase - hit.enemy.def + rollVariance());
+        damageMonster(state, hit, dmg);
+      }
       return false;
     }
+    if (proj.kind === "slow") return true; // Slow only targets monsters, not rabbits
+
     const hitAnimal = state.animals.find((a) => a.kind === "rabbit" && a.tileX === tileX && a.tileY === tileY);
     if (hitAnimal) {
       const dmg = Math.max(4, proj.dmgBase + rollVariance());
@@ -253,6 +291,20 @@ function updateProjectiles(state, dt) {
     }
     return true;
   });
+}
+
+// Halves the hit monster's move speed for SLOW_DURATION_MS - re-applying
+// while already slowed just refreshes the duration rather than stacking.
+function applySlow(state, monster) {
+  monster.slowedUntil = performance.now() + SLOW_DURATION_MS;
+  monster.floatText = { text: "Slowed!", until: performance.now() + 700 };
+  logEvent(state, `Slowed ${monster.enemy.name}.`, "damage");
+  // Getting hit (even by a non-damaging spell) wakes the monster up, same
+  // as a fireball landing from range.
+  if (!monster.alert) {
+    monster.alert = true;
+    monster.chaseTimeLeftMs = (FIELD_CHASE_MIN + Math.floor(Math.random() * (FIELD_CHASE_MAX - FIELD_CHASE_MIN + 1))) * 1000;
+  }
 }
 
 function updateMonsterCombat(state, dt) {

@@ -3,21 +3,43 @@
 // ---------------------------------------------------------------------------
 
 const CLASS_SKILLS = {
-  mage: {
-    id: "fireball",
-    name: "Fireball",
-    type: "active",
-    costLabel: "8 MP",
-    desc: "Assign to a hotbar slot below, then press or click it to hurl a bolt of flame in front of you for ~1.6x your Attack in damage.",
-  },
-  swordsman: {
-    id: "parry",
-    name: "Parry",
-    type: "passive",
-    costLabel: "Passive",
-    desc: "Always active. 10% chance to parry any incoming attack. 50% chance to parry a blow that would otherwise be fatal - that reflex needs about 15 seconds to recover between uses.",
-  },
+  mage: [
+    {
+      id: "fireball",
+      name: "Fireball",
+      type: "active",
+      costLabel: "8 MP",
+      desc: "Assign to a hotbar slot below, then press or click it to hurl a bolt of flame in front of you for ~1.6x your Attack (scaled further by Mind) in damage.",
+    },
+    {
+      id: "slow",
+      name: "Slow",
+      type: "active",
+      costLabel: "10 MP + 12s cooldown",
+      desc: "Assign to a hotbar slot below, then press or click it to hurl a chilling bolt at the chosen target, halving its move speed for 10 seconds. Has its own cooldown on top of the usual cast delay.",
+    },
+  ],
+  swordsman: [
+    {
+      id: "parry",
+      name: "Parry",
+      type: "passive",
+      costLabel: "Passive",
+      desc: "Always active. 10% chance to parry any incoming attack. 50% chance to parry a blow that would otherwise be fatal - that reflex needs about 15 seconds to recover between uses.",
+    },
+  ],
 };
+
+// Every active skill this class has, in one flat list - used wherever code
+// needs to check "is this hotbar value one of my skills" without caring
+// which specific skill it is.
+function classSkillList(playerClass) {
+  return CLASS_SKILLS[playerClass] || [];
+}
+
+function findClassSkillById(playerClass, skillId) {
+  return classSkillList(playerClass).find((s) => s.id === skillId) || null;
+}
 
 function drawFireballIcon(ctx, cx, cy, s) {
   ctx.save();
@@ -37,6 +59,35 @@ function drawFireballIcon(ctx, cx, cy, s) {
   ctx.quadraticCurveTo(cx - s * 0.18, cy + s * 0.02, cx, cy - s * 0.28);
   ctx.closePath();
   ctx.fillStyle = "#f6d97a";
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawSlowIcon(ctx, cx, cy, s) {
+  ctx.save();
+  ctx.strokeStyle = "#8ec9e8";
+  ctx.lineWidth = Math.max(2, s * 0.06);
+  ctx.lineCap = "round";
+  for (let i = 0; i < 3; i++) {
+    const angle = (Math.PI / 3) * i;
+    const dx = Math.cos(angle) * s * 0.46, dy = Math.sin(angle) * s * 0.46;
+    ctx.beginPath();
+    ctx.moveTo(cx - dx, cy - dy);
+    ctx.lineTo(cx + dx, cy + dy);
+    ctx.stroke();
+    for (const sign of [1, -1]) {
+      const ex = cx + dx * sign, ey = cy + dy * sign;
+      const tickAngle = angle + Math.PI / 3;
+      const tdx = Math.cos(tickAngle) * s * 0.14, tdy = Math.sin(tickAngle) * s * 0.14;
+      ctx.beginPath();
+      ctx.moveTo(ex - tdx, ey - tdy);
+      ctx.lineTo(ex + tdx, ey + tdy);
+      ctx.stroke();
+    }
+  }
+  ctx.fillStyle = "#f2f9ff";
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.09, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -82,13 +133,10 @@ function assignSkillToSlot(state, skill, slotIndex) {
 }
 
 function updateSkillsTab(state) {
-  const p = state.player;
-  const skill = CLASS_SKILLS[p.class];
-  if (!skill || skill.type !== "active") return;
   if (Input.rightClickPos) {
-    const hit = (state.uiHitboxes.skillCard || []).find((b) => pointInRect(Input.rightClickPos.x, Input.rightClickPos.y, b));
+    const hit = (state.uiHitboxes.skillCards || []).find((b) => pointInRect(Input.rightClickPos.x, Input.rightClickPos.y, b));
     if (hit) {
-      openSkillHotbarMenu(state, skill, Input.rightClickPos.x, Input.rightClickPos.y);
+      openSkillHotbarMenu(state, hit.skill, Input.rightClickPos.x, Input.rightClickPos.y);
       Input.rightClickPos = null;
     }
   }
@@ -119,41 +167,51 @@ function openSkillSlotPicker(state, skill, x, y) {
 // HUD one is hidden behind the MENU panel). A slot holds either the class's
 // assigned active skill (dims on the shared attack cooldown, as before) or a
 // dragged-on consumable (dims and counts down its own per-slot cooldown).
+const SKILL_ICON_DRAWERS = {
+  fireball: drawFireballIcon,
+  slow: drawSlowIcon,
+};
+
 function renderHotbarRow(ctx, state, x, y, slotSize, hitboxKey) {
   const p = state.player;
   const gap = Math.max(3, Math.round(slotSize * 0.18));
   const now = performance.now();
-  const skill = CLASS_SKILLS[p.class];
-  const onSkillCooldown = now < p.attackCooldownUntil;
+  const classSkills = classSkillList(p.class);
+  const onSharedCooldown = now < p.attackCooldownUntil;
 
   state.uiHitboxes[hitboxKey] = [];
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     const sx = x + i * (slotSize + gap);
     const val = p.hotbar[i];
-    const isSkill = !!skill && val === skill.id;
-    const itemData = !isSkill && val ? ITEMS[val] : null;
+    const skill = classSkills.find((s) => s.type === "active" && s.id === val) || null;
+    const itemData = !skill && val ? ITEMS[val] : null;
     const itemCooldownRemain = itemData ? Math.max(0, (p.hotbarCooldownUntil[i] || 0) - now) : 0;
+    // Slow carries its own cooldown on top of the shared attack cooldown -
+    // whichever is still running is the one shown counting down.
+    const skillOwnCooldownRemain = skill && skill.id === "slow" ? Math.max(0, p.slowCooldownUntil - now) : 0;
+    const skillCoolingDown = !!skill && (onSharedCooldown || skillOwnCooldownRemain > 0);
 
     ctx.save();
-    if (isSkill && onSkillCooldown) ctx.globalAlpha = 0.5;
+    if (skill && skillCoolingDown) ctx.globalAlpha = 0.5;
     if (itemData && itemCooldownRemain > 0) ctx.globalAlpha = 0.4;
     ctx.fillStyle = "rgba(10,14,12,0.78)";
     ctx.fillRect(sx, y, slotSize, slotSize);
     ctx.strokeStyle = "#e8c97a";
     ctx.lineWidth = 1;
     ctx.strokeRect(sx, y, slotSize, slotSize);
-    if (isSkill && val === "fireball") {
-      drawFireballIcon(ctx, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
+    if (skill && SKILL_ICON_DRAWERS[skill.id]) {
+      SKILL_ICON_DRAWERS[skill.id](ctx, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
     } else if (itemData) {
       drawItemIcon(ctx, val, sx + slotSize / 2, y + slotSize / 2, slotSize * 0.7);
     }
     ctx.restore();
 
-    if (itemData && itemCooldownRemain > 0) {
+    const cooldownLabelMs = itemData ? itemCooldownRemain : skillOwnCooldownRemain > 0 && !onSharedCooldown ? skillOwnCooldownRemain : 0;
+    if (cooldownLabelMs > 0) {
       ctx.fillStyle = "#f2f2ec";
       ctx.font = `bold ${Math.max(10, Math.floor(slotSize * 0.4))}px 'Segoe UI', sans-serif`;
       ctx.textAlign = "center";
-      ctx.fillText(String(Math.ceil(itemCooldownRemain / 1000)), sx + slotSize / 2, y + slotSize / 2 + slotSize * 0.15);
+      ctx.fillText(String(Math.ceil(cooldownLabelMs / 1000)), sx + slotSize / 2, y + slotSize / 2 + slotSize * 0.15);
       ctx.textAlign = "left";
     }
 
@@ -271,71 +329,83 @@ function renderHotbar(ctx, state) {
   renderHotbarRow(ctx, state, startX, y, slotSize, "hotbar");
 }
 
-function renderSkillsTab(ctx, state, x, y, w, h) {
+// One card per class skill - active skills are right-click-assignable to
+// the hotbar (tracked in state.uiHitboxes.skillCards); passives (e.g.
+// Parry) just display their effect, with no hotbar row.
+function renderSkillCard(ctx, state, skill, x, y, w, cardH) {
   const p = state.player;
+  ctx.fillStyle = "rgba(20,28,20,0.75)";
+  ctx.fillRect(x, y, w, cardH);
+  ctx.strokeStyle = "rgba(199,167,95,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, cardH);
+
+  if (skill.type === "active") {
+    state.uiHitboxes.skillCards.push({ skill, x, y, w, h: cardH });
+  }
+
+  const iconSize = Math.min(64, cardH * 0.5);
+  const iconCx = x + 64, iconCy = y + cardH / 2 - 4;
+  if (skill.id === "fireball") drawFireballIcon(ctx, iconCx, iconCy, iconSize);
+  else if (skill.id === "slow") drawSlowIcon(ctx, iconCx, iconCy, iconSize);
+  else if (skill.id === "parry") drawParryIcon(ctx, iconCx, iconCy, iconSize);
+
+  const textX = x + 128;
+  ctx.fillStyle = "#e8c97a";
+  ctx.font = "bold 16px 'Segoe UI', sans-serif";
+  ctx.fillText(skill.name, textX, y + 26);
+
+  ctx.fillStyle = skill.type === "passive" ? "#8ec9e8" : "#e89a5a";
+  ctx.font = "11px 'Segoe UI', sans-serif";
+  ctx.fillText((skill.type === "passive" ? "PASSIVE - " : "ACTIVE - ") + skill.costLabel, textX, y + 44);
+
+  ctx.fillStyle = "#cfd8cf";
+  ctx.font = "12px 'Segoe UI', sans-serif";
+  wrapText(ctx, skill.desc, textX, y + 64, x + w - textX - 16, 15);
+
+  if (skill.type === "active") {
+    const slotIdx = p.hotbar.indexOf(skill.id);
+    ctx.fillStyle = slotIdx >= 0 ? "#7cd68a" : "#e88a5a";
+    ctx.font = "11px 'Segoe UI', sans-serif";
+    ctx.fillText("Right-click card to equip/unequip on the hotbar", textX, y + cardH - 28);
+
+    const miniSize = 18, miniGap = 3;
+    const rowY = y + cardH - 18;
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      const sx = textX + i * (miniSize + miniGap);
+      const assigned = p.hotbar[i] === skill.id;
+      ctx.fillStyle = assigned ? "rgba(124,214,138,0.25)" : "rgba(10,14,12,0.6)";
+      ctx.fillRect(sx, rowY, miniSize, miniSize);
+      ctx.strokeStyle = assigned ? "#7cd68a" : "rgba(232,201,122,0.4)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sx, rowY, miniSize, miniSize);
+      ctx.fillStyle = "#cfd8cf";
+      ctx.font = "8px 'Segoe UI', sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(String(i + 1), sx + miniSize / 2, rowY + miniSize / 2 + 3);
+    }
+    ctx.textAlign = "left";
+  }
+}
+
+function renderSkillsTab(ctx, state, x, y, w, h) {
   const leftW = Math.round(w * 0.56);
   const rightX = x + leftW + 18;
   const rightW = w - leftW - 18;
 
-  const cardH = 220;
-  ctx.fillStyle = "rgba(20,28,20,0.75)";
-  ctx.fillRect(x, y, leftW, cardH);
-  ctx.strokeStyle = "rgba(199,167,95,0.4)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x, y, leftW, cardH);
+  const skills = classSkillList(state.player.class);
+  state.uiHitboxes.skillCards = [];
 
-  const skill = CLASS_SKILLS[p.class];
-  state.uiHitboxes.skillCard = skill && skill.type === "active" ? [{ x, y, w: leftW, h: cardH }] : [];
-  if (skill) {
-    const iconCx = x + 74;
-    const iconCy = y + 74;
-    if (skill.id === "fireball") drawFireballIcon(ctx, iconCx, iconCy, 76);
-    else if (skill.id === "parry") drawParryIcon(ctx, iconCx, iconCy, 76);
-
-    ctx.fillStyle = "#e8c97a";
-    ctx.font = "bold 18px 'Segoe UI', sans-serif";
-    ctx.fillText(skill.name, x + 140, y + 44);
-
-    ctx.fillStyle = skill.type === "passive" ? "#8ec9e8" : "#e89a5a";
-    ctx.font = "12px 'Segoe UI', sans-serif";
-    ctx.fillText(
-      (skill.type === "passive" ? "PASSIVE - " : "ACTIVE - ") + skill.costLabel,
-      x + 140,
-      y + 64
-    );
-
-    ctx.fillStyle = "#cfd8cf";
-    ctx.font = "13px 'Segoe UI', sans-serif";
-    wrapText(ctx, skill.desc, x + 140, y + 90, leftW - 160, 18);
-
-    if (skill.type === "active") {
-      const slotIdx = p.hotbar.indexOf(skill.id);
-      ctx.fillStyle = slotIdx >= 0 ? "#7cd68a" : "#e88a5a";
-      ctx.font = "12px 'Segoe UI', sans-serif";
-      ctx.fillText("Right-click to equip/unequip on the hotbar", x + 140, y + cardH - 34);
-
-      const miniSize = 22, miniGap = 4;
-      const rowX = x + 140;
-      const rowY = y + cardH - 22;
-      for (let i = 0; i < HOTBAR_SIZE; i++) {
-        const sx = rowX + i * (miniSize + miniGap);
-        const assigned = p.hotbar[i] === skill.id;
-        ctx.fillStyle = assigned ? "rgba(124,214,138,0.25)" : "rgba(10,14,12,0.6)";
-        ctx.fillRect(sx, rowY, miniSize, miniSize);
-        ctx.strokeStyle = assigned ? "#7cd68a" : "rgba(232,201,122,0.4)";
-        ctx.lineWidth = 1;
-        ctx.strokeRect(sx, rowY, miniSize, miniSize);
-        ctx.fillStyle = "#cfd8cf";
-        ctx.font = "9px 'Segoe UI', sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(String(i + 1), sx + miniSize / 2, rowY + miniSize / 2 + 3);
-      }
-      ctx.textAlign = "left";
-    }
-  } else {
+  if (skills.length === 0) {
     ctx.fillStyle = "#9aa89a";
     ctx.font = "14px 'Segoe UI', sans-serif";
     ctx.fillText("No class selected.", x + 20, y + 40);
+  } else {
+    const cardGap = 12;
+    const cardH = Math.min(190, Math.floor((h - cardGap * (skills.length - 1)) / skills.length));
+    skills.forEach((skill, idx) => {
+      renderSkillCard(ctx, state, skill, x, y + idx * (cardH + cardGap), leftW, cardH);
+    });
   }
 
   renderPlayerPanel(ctx, state, rightX, y, rightW, h);

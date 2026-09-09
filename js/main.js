@@ -3,8 +3,8 @@
 // ---------------------------------------------------------------------------
 
 const SAVE_KEY = "isekai_whispering_wood_save";
-const MENU_TABS = ["inventory", "skills", "crafting"];
-const MENU_TAB_LABELS = { inventory: "Inventory", skills: "Skills", crafting: "Crafting" };
+const MENU_TABS = ["inventory", "skills", "crafting", "profile"];
+const MENU_TAB_LABELS = { inventory: "Inventory", skills: "Skills", crafting: "Crafting", profile: "Profile" };
 
 function createInitialState() {
   const state = {
@@ -736,6 +736,8 @@ function updateMenu() {
     updateCraftingTab(state);
   } else if (state.menuTab === "skills") {
     updateSkillsTab(state);
+  } else if (state.menuTab === "profile") {
+    updateProfileTab(state);
   }
 }
 
@@ -917,7 +919,14 @@ function renderHud() {
 
   ctx.fillStyle = "#e8c97a";
   ctx.font = "bold 13px 'Segoe UI', sans-serif";
-  ctx.fillText(`Lv.${p.level}`, innerX, sy);
+  const lvText = `Lv.${p.level}`;
+  ctx.fillText(lvText, innerX, sy);
+  if (p.statPoints > 0) {
+    const lvW = ctx.measureText(lvText).width;
+    ctx.fillStyle = "#f6d97a";
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.fillText(`+${p.statPoints} pts!`, innerX + lvW + 8, sy);
+  }
   ctx.fillStyle = "#f2f2ec";
   ctx.font = "12px 'Segoe UI', sans-serif";
   ctx.textAlign = "right";
@@ -1326,8 +1335,10 @@ function renderMenu() {
     renderInventoryTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
   } else if (state.menuTab === "crafting") {
     renderCraftingTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
-  } else {
+  } else if (state.menuTab === "skills") {
     renderSkillsTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
+  } else {
+    renderProfileTab(ctx, state, 90, 96, panelW - 60, panelH - 96 - 44);
   }
 
   if (performance.now() < state.menuFlashUntil) {
@@ -1344,7 +1355,9 @@ function renderMenu() {
     ? "Click a tab/item, right-click an item for actions, or: Q tab   [ ] category   Arrows browse   Enter use/equip   S save   I/Esc close"
     : state.menuTab === "crafting"
     ? "Click a tab/recipe, or: Q tab   Arrows select   Enter craft   S save   I/Esc close"
-    : "Right-click the skill card to manage its hotbar slot, or: Q tab   S save   I/Esc close";
+    : state.menuTab === "skills"
+    ? "Right-click the skill card to manage its hotbar slot, or: Q tab   S save   I/Esc close"
+    : "Click + to spend a stat point, or: Q tab   S save   I/Esc close";
   ctx.fillText(hint, 90, canvas.height - 56);
 
   renderContextMenu(ctx, state);

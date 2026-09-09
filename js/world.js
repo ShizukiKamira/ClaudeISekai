@@ -1057,6 +1057,10 @@ function drawFieldMonster(ctx, monster) {
     ctx.fillText("!", cx, monster.pixelY - 34);
   }
 
+  if (monster.slowedUntil && performance.now() < monster.slowedUntil) {
+    drawSlowIcon(ctx, monster.pixelX + TILE_SIZE - 6, monster.pixelY + 6, 16);
+  }
+
   if (monster.floatText && performance.now() < monster.floatText.until) {
     const remaining = monster.floatText.until - performance.now();
     const age = 1 - remaining / 700;

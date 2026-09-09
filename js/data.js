@@ -998,6 +998,32 @@ const HOTBAR_SIZE = 9;
 const HOTBAR_ITEM_COOLDOWN_MS = 10000; // per-slot cooldown for a dragged-on consumable
 
 // ---------------------------------------------------------------------------
+// Slow: a mage bolt that, on hitting a monster, halves its move speed for a
+// while - travels and is aimed exactly like Fireball, but debuffs instead of
+// damaging.
+// ---------------------------------------------------------------------------
+
+const SLOW_SPEED = 260; // px/s, matches Fireball's travel speed
+const SLOW_MAX_LIFE_MS = 1500;
+const SLOW_MP_COST = 10;
+const SLOW_COOLDOWN_MS = 12000; // on top of the shared attack cooldown
+const SLOW_DURATION_MS = 10000; // how long a hit monster stays slowed
+const SLOW_SPEED_MULT = 0.5; // the hit monster's move speed while slowed
+
+// ---------------------------------------------------------------------------
+// Character attributes: 3 points to distribute per level-up (on top of the
+// automatic per-level growth every class already gets), spent from the
+// Profile tab. Strength adds flat ATK, Defence adds flat DEF, Mind adds both
+// max MP and a magic-damage multiplier for spells (Fireball, Slow).
+// ---------------------------------------------------------------------------
+
+const STAT_POINTS_PER_LEVEL = 3;
+const STR_ATK_PER_POINT = 2;
+const DEF_PER_POINT = 1;
+const MIND_MP_PER_POINT = 5;
+const MIND_MAGIC_DMG_PER_POINT = 0.02; // +2% magic damage per point
+
+// ---------------------------------------------------------------------------
 // Placement: choosing where to put a crafted item with the mouse, within a
 // short range of the player rather than only the tile directly ahead.
 // ---------------------------------------------------------------------------

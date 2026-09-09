@@ -49,12 +49,45 @@ function createPlayer() {
     dashCharges: DASH_MAX_CHARGES,
     dashChargeRegenAt: 0,
     dash: null, // { active, fromX, fromY, toX, toY, startedAt } while a dash is animating
+    slowCooldownUntil: 0,
+    statPoints: 0, // unspent points from leveling, spent on the Profile tab
+    allocStr: 0, // Strength - flat bonus ATK
+    allocMnd: 0, // Mind - bonus max MP (granted immediately when spent) + magic damage scaling
+    allocDef: 0, // Defence - flat bonus DEF
   };
 }
 
 function playerAtk(player) {
   const bonus = player.weapon ? ITEMS[player.weapon].atkBonus || 0 : 0;
-  return player.baseAtk + bonus;
+  return player.baseAtk + bonus + player.allocStr * STR_ATK_PER_POINT;
+}
+
+// Multiplies magic-skill damage (Fireball, Slow) - each point of Mind adds
+// MIND_MAGIC_DMG_PER_POINT (2%) on top of the base 1x.
+function magicPower(player) {
+  return 1 + player.allocMnd * MIND_MAGIC_DMG_PER_POINT;
+}
+
+// Spends one of the player's unspent stat points on Strength, Mind, or
+// Defence - called from the Profile tab. Mind's max-MP bonus is granted
+// immediately (like a level-up would), rather than computed on the fly, so
+// the player's current MP grows along with the cap instead of just the
+// ceiling moving away from them.
+function spendStatPoint(state, stat) {
+  const p = state.player;
+  if (p.statPoints <= 0) return;
+  if (stat === "str") {
+    p.allocStr += 1;
+  } else if (stat === "mnd") {
+    p.allocMnd += 1;
+    p.maxMp += MIND_MP_PER_POINT;
+    p.mp += MIND_MP_PER_POINT;
+  } else if (stat === "def") {
+    p.allocDef += 1;
+  } else {
+    return;
+  }
+  p.statPoints -= 1;
 }
 
 // "sword" | "dagger" | "staff" | null (barehanded) - drives which melee/cast
@@ -66,7 +99,7 @@ function getWeaponKind(player) {
 
 function playerDef(player) {
   const bonus = player.accessory ? ITEMS[player.accessory].defBonus || 0 : 0;
-  return player.baseDef + bonus;
+  return player.baseDef + bonus + player.allocDef * DEF_PER_POINT;
 }
 
 function expNeededFor(level) {
@@ -85,9 +118,10 @@ function grantExp(state, amount) {
     p.maxMp += 4;
     p.baseAtk += 3;
     p.baseDef += 1;
+    p.statPoints += STAT_POINTS_PER_LEVEL;
     p.hp = p.maxHp;
     p.mp = p.maxMp;
-    const levelMsg = `Level up! You are now level ${p.level}.`;
+    const levelMsg = `Level up! You are now level ${p.level}. +${STAT_POINTS_PER_LEVEL} stat points to spend (Profile tab).`;
     messages.push(levelMsg);
     logEvent(state, levelMsg, "heal");
   }
@@ -217,6 +251,16 @@ function moveWithCollision(state, entity, vx, vy, dt, radius) {
   return moved;
 }
 
+// A monster hit by the Slow spell moves at SLOW_SPEED_MULT of its normal
+// speed until slowedUntil passes - checked here instead of baked into
+// entity.moveSpeed directly so the debuff can wear off on its own.
+function effectiveMoveSpeed(entity) {
+  if (entity.slowedUntil && performance.now() < entity.slowedUntil) {
+    return entity.moveSpeed * SLOW_SPEED_MULT;
+  }
+  return entity.moveSpeed;
+}
+
 // Steers any entity with pixelX/pixelY/moveSpeed/dir/moving fields straight
 // toward a pixel-space target, stopping once within stopDist - shared by
 // alert field monsters chasing the player and rabbits fleeing from it.
@@ -230,7 +274,8 @@ function moveEntityToward(state, entity, targetPixelX, targetPixelY, dt, radius,
   }
   const angle = Math.atan2(dy, dx);
   entity.dir = angleToDir8(angle);
-  entity.moving = moveWithCollision(state, entity, Math.cos(angle) * entity.moveSpeed, Math.sin(angle) * entity.moveSpeed, dt, radius);
+  const speed = effectiveMoveSpeed(entity);
+  entity.moving = moveWithCollision(state, entity, Math.cos(angle) * speed, Math.sin(angle) * speed, dt, radius);
 }
 
 // Idle wandering: picks a random heading (or a pause) every so often and
@@ -249,7 +294,7 @@ function wanderEntity(state, entity, dt, radius) {
     return;
   }
   entity.dir = angleToDir8(Math.atan2(entity._wanderVec[1], entity._wanderVec[0]));
-  const speed = entity.moveSpeed * 0.55;
+  const speed = effectiveMoveSpeed(entity) * 0.55;
   const moved = moveWithCollision(state, entity, entity._wanderVec[0] * speed, entity._wanderVec[1] * speed, dt, radius);
   entity.moving = moved;
   if (!moved) entity._wanderUntil = 0; // blocked - pick a new heading next frame instead of stalling

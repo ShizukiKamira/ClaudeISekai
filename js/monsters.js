@@ -23,6 +23,7 @@ function spawnFieldMonster(state, x, y, speciesId) {
     visionRadius: 3 + Math.floor(Math.random() * 2), // 3-4
     currentHp: enemy.hp,
     nextAttackAt: 0,
+    slowedUntil: 0,
     enemy,
   });
 }
@@ -44,6 +45,7 @@ function spawnBossMonster(state, x, y) {
     visionRadius: 99,
     currentHp: enemy.hp,
     nextAttackAt: 0,
+    slowedUntil: 0,
     isBoss: true,
     enemy,
   };
