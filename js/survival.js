@@ -26,17 +26,54 @@ function tickHungerThirst(state) {
 // Water instead of drinking straight from the lake - the flask-refill flow
 // the empty flask left behind by a drunk Potion exists for.
 function handleDrinkWater(state) {
-  const p = state.player;
   if (hasItem(state, "empty_flask")) {
     fillFlaskWithDirtyWater(state);
     return;
   }
+  drinkWaterDirectly(state);
+}
+
+// Always drinks straight from the lake, ignoring any Empty Flask on hand -
+// the action behind the water context menu's "Drink" option, kept separate
+// from handleDrinkWater so that one can stay flask-first for the plain
+// facing+Enter interact.
+function drinkWaterDirectly(state) {
+  const p = state.player;
   if (p.thirst >= THIRST_MAX) {
     Dialogue.show(["You're not thirsty right now."]);
     return;
   }
   p.thirst = THIRST_MAX;
   Dialogue.show(["You cup your hands and drink from the water. Thirst restored."]);
+  logEvent(state, "Drank water. Thirst restored.", "heal");
+}
+
+// Right-clicking a water tile opens this instead of requiring the player
+// to face it and press Enter - a quick menu of every water-related action
+// available from here.
+function openWaterContextMenu(state, tileX, tileY, screenX, screenY) {
+  const options = [];
+
+  const hasRod = hasItem(state, "fishing_rod");
+  options.push({
+    label: hasRod ? "Fish" : "Fish (Requires Fishing Rod)",
+    disabled: !hasRod,
+    onSelect: () => startFishing(state, tileX, tileY),
+  });
+
+  if (hasItem(state, "empty_flask")) {
+    options.push({
+      label: "Fill Empty Bottle",
+      onSelect: () => fillFlaskWithDirtyWater(state),
+    });
+  }
+
+  options.push({
+    label: "Drink",
+    onSelect: () => drinkWaterDirectly(state),
+  });
+
+  openContextMenu(state, screenX, screenY, options);
 }
 
 function fillFlaskWithDirtyWater(state) {

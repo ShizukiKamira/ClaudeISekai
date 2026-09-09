@@ -23,6 +23,7 @@ function createInitialState() {
     eventLogRect: { x: 8, y: 128, w: 230, h: 145 }, // player-adjustable position/size
     eventLogDrag: null, // { offsetX, offsetY } while the panel is being dragged by its header
     eventLogResize: null, // { startW, startH, startMouseX, startMouseY } while the panel is being resized
+    contextMenu: null, // { x, y, w, rowH, pad, options: [{ label, disabled, onSelect }] } - right-click popup
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -426,6 +427,11 @@ function updateOverworld(dt) {
   // firing while the player repositions it.
   updateEventLogPanel(state);
 
+  // A context menu (e.g. from right-clicking a water tile) claims any click
+  // aimed at it by nulling Input.clickPos/rightClickPos below, so the world
+  // click-dispatch further down simply never sees it.
+  updateContextMenu(state);
+
   if (state.placingItem) {
     updatePlacing(dt);
     return;
@@ -510,13 +516,18 @@ function updateOverworld(dt) {
   }
 
   // Right-clicking a placed object prompts to store it back in the
-  // inventory, removing it from the world.
+  // inventory, removing it from the world; right-clicking a water tile
+  // instead opens the fish/fill-bottle/drink menu.
   if (Input.rightClickPos && !Dialogue.active) {
     const clicked = screenToTile(Input.rightClickPos);
     const withinRange = chebyshevDist(clicked.x, clicked.y, state.player.tileX, state.player.tileY) <= INTERACT_CLICK_RANGE;
     const obj = state.placedObjects.find((o) => o.x === clicked.x && o.y === clicked.y);
+    const tileType = state.map[clicked.y] && state.map[clicked.y][clicked.x];
     if (withinRange && obj) {
       openStorePrompt(state, obj);
+      Input.rightClickPos = null;
+    } else if (withinRange && tileType === TILE.WATER) {
+      openWaterContextMenu(state, clicked.x, clicked.y, Input.rightClickPos.x, Input.rightClickPos.y);
       Input.rightClickPos = null;
     }
   }
@@ -692,6 +703,10 @@ function updatePlacing(dt) {
 }
 
 function updateMenu() {
+  if (state.contextMenu) {
+    updateContextMenu(state);
+    return;
+  }
   if (Input.cancelPressed() || Input.menuPressed()) {
     state.mode = "OVERWORLD";
     return;
@@ -975,6 +990,92 @@ function renderHud() {
   renderStorePrompt(ctx, state, canvas.width, canvas.height);
   renderDashHud(ctx, state);
   renderEventLog(ctx, state);
+  renderContextMenu(ctx, state);
+}
+
+// ---------------------------------------------------------------------------
+// Context menu: a small right-click popup used for water-tile actions,
+// inventory item actions, and hotbar-skill assignment. Each option carries
+// its own onSelect callback, so callers just describe what to show; a menu
+// can optionally chain into a second "submenu" level (e.g. picking a hotbar
+// slot) by having an option's onSelect call openContextMenu again.
+// ---------------------------------------------------------------------------
+
+function openContextMenu(state, x, y, options) {
+  const w = 190, rowH = 22, pad = 6;
+  const h = options.length * rowH + pad * 2;
+  state.contextMenu = {
+    x: Math.max(4, Math.min(x, canvas.width - w - 4)),
+    y: Math.max(4, Math.min(y, canvas.height - h - 4)),
+    w,
+    rowH,
+    pad,
+    options,
+  };
+}
+
+function closeContextMenu(state) {
+  state.contextMenu = null;
+  state.uiHitboxes.contextMenuOptions = [];
+}
+
+// Called early (before world/menu click dispatch) whenever a context menu
+// might be open, so a click aimed at it never falls through to whatever's
+// underneath. Returns true if it claimed this frame's input.
+function updateContextMenu(state) {
+  if (!state.contextMenu) return false;
+  if (Input.cancelPressed()) {
+    closeContextMenu(state);
+    return true;
+  }
+  if (Input.rightClickPos) {
+    // A second right-click anywhere just dismisses the menu rather than
+    // also opening a new one on the same frame.
+    Input.rightClickPos = null;
+    closeContextMenu(state);
+    return true;
+  }
+  if (Input.clickPos) {
+    const hit = (state.uiHitboxes.contextMenuOptions || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+    Input.clickPos = null;
+    if (hit && !hit.disabled) {
+      const cb = hit.onSelect;
+      closeContextMenu(state);
+      if (cb) cb(state);
+    } else if (!hit) {
+      closeContextMenu(state);
+    }
+    return true;
+  }
+  return true; // swallow the rest of this frame's click dispatch while open
+}
+
+function renderContextMenu(ctx, state) {
+  const menu = state.contextMenu;
+  if (!menu) return;
+  const h = menu.options.length * menu.rowH + menu.pad * 2;
+  ctx.fillStyle = "rgba(6,10,8,0.97)";
+  ctx.fillRect(menu.x, menu.y, menu.w, h);
+  ctx.strokeStyle = "#e8c97a";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(menu.x, menu.y, menu.w, h);
+  drawPixelFrameCorners(ctx, menu.x, menu.y, menu.w, h, 8, "#e8c97a");
+
+  state.uiHitboxes.contextMenuOptions = [];
+  const mx = Input.mousePos.x, my = Input.mousePos.y;
+  menu.options.forEach((opt, i) => {
+    const oy = menu.y + menu.pad + i * menu.rowH;
+    const box = { x: menu.x + 2, y: oy, w: menu.w - 4, h: menu.rowH, disabled: opt.disabled, onSelect: opt.onSelect };
+    const hovered = !opt.disabled && pointInRect(mx, my, box);
+    if (hovered) {
+      ctx.fillStyle = "rgba(232,201,122,0.16)";
+      ctx.fillRect(box.x, box.y, box.w, box.h);
+    }
+    ctx.fillStyle = opt.disabled ? "#5a6a5a" : hovered ? "#f6d97a" : "#f2f2ec";
+    ctx.font = "12px 'Segoe UI', sans-serif";
+    ctx.fillText(opt.label, menu.x + 10, oy + 15);
+    state.uiHitboxes.contextMenuOptions.push(box);
+  });
 }
 
 // Dash charge pips, drawn just under the top-left HUD box - filled gold for
@@ -1240,11 +1341,13 @@ function renderMenu() {
   ctx.fillStyle = "#8a9a8a";
   ctx.font = "12px 'Segoe UI', sans-serif";
   const hint = state.menuTab === "inventory"
-    ? "Click a tab/item, or: Q tab   [ ] category   Arrows browse   Enter use/equip   S save   I/Esc close"
+    ? "Click a tab/item, right-click an item for actions, or: Q tab   [ ] category   Arrows browse   Enter use/equip   S save   I/Esc close"
     : state.menuTab === "crafting"
     ? "Click a tab/recipe, or: Q tab   Arrows select   Enter craft   S save   I/Esc close"
-    : "Click a tab/hotbar slot, or: Q tab   1-9 assign to hotbar   S save   I/Esc close";
+    : "Right-click the skill card to manage its hotbar slot, or: Q tab   S save   I/Esc close";
   ctx.fillText(hint, 90, canvas.height - 56);
+
+  renderContextMenu(ctx, state);
 }
 
 function renderEndScreen(title, lines, bg, accent) {

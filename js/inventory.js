@@ -42,6 +42,18 @@ function updateInventoryTab(state) {
   // assigning/moving one clears any other slot that already held it.
   updateHotbarDrag(state, items, "invSlots", "invHotbarSlots");
 
+  // Right-clicking an item offers its available actions (equip/unequip a
+  // weapon or accessory, or assign a potion to the lowest open hotbar slot)
+  // as an explicit menu instead of relying on the double-click-to-use/equip
+  // shortcut.
+  if (Input.rightClickPos) {
+    const slotHit = (state.uiHitboxes.invSlots || []).find((b) => pointInRect(Input.rightClickPos.x, Input.rightClickPos.y, b));
+    if (slotHit && items[slotHit.idx]) {
+      openInventoryItemContextMenu(state, items[slotHit.idx].item, Input.rightClickPos.x, Input.rightClickPos.y);
+      Input.rightClickPos = null;
+    }
+  }
+
   if (items.length === 0) return;
   state.menuCursor = Math.min(state.menuCursor, items.length - 1);
 
@@ -94,6 +106,49 @@ function useOrEquipItem(state, itemId) {
     state.mode = "OVERWORLD";
     state.placingItem = itemId;
   }
+}
+
+function getLowestEmptyHotbarSlot(state) {
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (!state.player.hotbar[i]) return i;
+  }
+  return -1;
+}
+
+// Right-click menu for an inventory slot: weapons/accessories get an
+// Equip/Unequip toggle (sharing useOrEquipItem's logic), potions get a
+// one-click "Put in Slot N" for the lowest open hotbar slot. Items with
+// nothing sensible to offer here (tools, materials, placeables) just don't
+// open a menu.
+function openInventoryItemContextMenu(state, itemId, x, y) {
+  const p = state.player;
+  const data = ITEMS[itemId];
+  const options = [];
+
+  if (data.type === "weapon") {
+    options.push({
+      label: p.weapon === itemId ? "Unequip" : "Equip",
+      onSelect: () => useOrEquipItem(state, itemId),
+    });
+  } else if (data.type === "accessory") {
+    options.push({
+      label: p.accessory === itemId ? "Unequip" : "Equip",
+      onSelect: () => useOrEquipItem(state, itemId),
+    });
+  } else if (data.type === "consumable") {
+    const slotIdx = getLowestEmptyHotbarSlot(state);
+    if (slotIdx >= 0) {
+      options.push({
+        label: `Put in Slot ${slotIdx + 1}`,
+        onSelect: () => assignHotbarSlot(state, slotIdx, itemId),
+      });
+    } else {
+      options.push({ label: "Hotbar full", disabled: true });
+    }
+  }
+
+  if (options.length === 0) return;
+  openContextMenu(state, x, y, options);
 }
 
 // --- icon drawing -----------------------------------------------------------

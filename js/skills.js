@@ -85,16 +85,33 @@ function updateSkillsTab(state) {
   const p = state.player;
   const skill = CLASS_SKILLS[p.class];
   if (!skill || skill.type !== "active") return;
-  for (let i = 0; i < HOTBAR_SIZE; i++) {
-    if (Input.wasPressed(`Digit${i + 1}`)) assignSkillToSlot(state, skill, i);
-  }
-  if (Input.clickPos) {
-    const hit = (state.uiHitboxes.skillsHotbar || []).find((b) => pointInRect(Input.clickPos.x, Input.clickPos.y, b));
+  if (Input.rightClickPos) {
+    const hit = (state.uiHitboxes.skillCard || []).find((b) => pointInRect(Input.rightClickPos.x, Input.rightClickPos.y, b));
     if (hit) {
-      assignSkillToSlot(state, skill, hit.idx);
-      Input.clickPos = null;
+      openSkillHotbarMenu(state, skill, Input.rightClickPos.x, Input.rightClickPos.y);
+      Input.rightClickPos = null;
     }
   }
+}
+
+// Right-click menu for the skill card: offers to equip the skill onto the
+// hotbar (prompting a second menu to pick which slot) or, if it's already
+// assigned somewhere, to unequip it - the discoverable replacement for the
+// old "click a mini-slot / press a number" toggle.
+function openSkillHotbarMenu(state, skill, x, y) {
+  const currentSlot = state.player.hotbar.indexOf(skill.id);
+  const options = currentSlot >= 0
+    ? [{ label: "Unequip from Hotbar", onSelect: () => assignSkillToSlot(state, skill, currentSlot) }]
+    : [{ label: "Equip onto Hotbar", onSelect: () => openSkillSlotPicker(state, skill, x, y) }];
+  openContextMenu(state, x, y, options);
+}
+
+function openSkillSlotPicker(state, skill, x, y) {
+  const options = [];
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    options.push({ label: `Slot ${i + 1}`, onSelect: () => assignSkillToSlot(state, skill, i) });
+  }
+  openContextMenu(state, x, y, options);
 }
 
 // Shared by the persistent HUD hotbar (during OVERWORLD) and the Inventory
@@ -268,6 +285,7 @@ function renderSkillsTab(ctx, state, x, y, w, h) {
   ctx.strokeRect(x, y, leftW, cardH);
 
   const skill = CLASS_SKILLS[p.class];
+  state.uiHitboxes.skillCard = skill && skill.type === "active" ? [{ x, y, w: leftW, h: cardH }] : [];
   if (skill) {
     const iconCx = x + 74;
     const iconCy = y + 74;
@@ -292,18 +310,13 @@ function renderSkillsTab(ctx, state, x, y, w, h) {
 
     if (skill.type === "active") {
       const slotIdx = p.hotbar.indexOf(skill.id);
-      const slotLabel = slotIdx >= 0
-        ? `Hotbar slot ${slotIdx + 1} - click it (or press ${slotIdx + 1}) to unassign`
-        : "Not on hotbar - click a slot below (or press 1-9) to assign it";
       ctx.fillStyle = slotIdx >= 0 ? "#7cd68a" : "#e88a5a";
       ctx.font = "12px 'Segoe UI', sans-serif";
-      ctx.fillText(slotLabel, x + 140, y + cardH - 34);
+      ctx.fillText("Right-click to equip/unequip on the hotbar", x + 140, y + cardH - 34);
 
       const miniSize = 22, miniGap = 4;
-      const totalW = HOTBAR_SIZE * miniSize + (HOTBAR_SIZE - 1) * miniGap;
       const rowX = x + 140;
       const rowY = y + cardH - 22;
-      state.uiHitboxes.skillsHotbar = [];
       for (let i = 0; i < HOTBAR_SIZE; i++) {
         const sx = rowX + i * (miniSize + miniGap);
         const assigned = p.hotbar[i] === skill.id;
@@ -316,7 +329,6 @@ function renderSkillsTab(ctx, state, x, y, w, h) {
         ctx.font = "9px 'Segoe UI', sans-serif";
         ctx.textAlign = "center";
         ctx.fillText(String(i + 1), sx + miniSize / 2, rowY + miniSize / 2 + 3);
-        state.uiHitboxes.skillsHotbar.push({ idx: i, x: sx, y: rowY, w: miniSize, h: miniSize });
       }
       ctx.textAlign = "left";
     }
