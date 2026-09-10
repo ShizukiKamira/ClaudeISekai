@@ -24,6 +24,12 @@ function createInitialState() {
     eventLogDrag: null, // { offsetX, offsetY } while the panel is being dragged by its header
     eventLogResize: null, // { startW, startH, startMouseX, startMouseY } while the panel is being resized
     contextMenu: null, // { x, y, w, rowH, pad, options: [{ label, disabled, onSelect }] } - right-click popup
+    particles: [], // hit sparks, death bursts, footstep dust - see spawn*Particles/updateParticles
+    hitStopUntil: 0, // gameplay dt is slowed near-to-zero until this timestamp, for impact weight
+    shakeUntil: 0, // camera jitter (see triggerShake/getShakeOffset) is active until this timestamp
+    shakeMag: 0,
+    shakeDurationMs: 0,
+    shakeStartedAt: 0,
     projectiles: [],
     itemPickups: JSON.parse(JSON.stringify(ITEM_PICKUPS)),
     placedObjects: [],
@@ -194,40 +200,180 @@ function screenToTile(clickPos) {
   };
 }
 
-const Camera = { x: 0, y: 0 };
+const Camera = { x: 0, y: 0 }; // final on-screen position, including shake
+let cameraTrueX = 0, cameraTrueY = 0; // the smoothed "real" position shake jitters around
+let cameraInitialized = false;
 
 function updateCamera(state) {
   const mapPixelW = state.map[0].length * TILE_SIZE;
   const mapPixelH = state.map.length * TILE_SIZE;
+  let targetX, targetY;
   // A map smaller than the viewport (e.g. the home interior) is centered
   // rather than pinned to the top-left corner.
   if (mapPixelW <= canvas.width) {
-    Camera.x = -(canvas.width - mapPixelW) / 2;
+    targetX = -(canvas.width - mapPixelW) / 2;
   } else {
-    const targetX = state.player.pixelX + TILE_SIZE / 2 - canvas.width / 2;
-    Camera.x = Math.max(0, Math.min(targetX, mapPixelW - canvas.width));
+    const raw = state.player.pixelX + TILE_SIZE / 2 - canvas.width / 2;
+    targetX = Math.max(0, Math.min(raw, mapPixelW - canvas.width));
   }
   if (mapPixelH <= canvas.height) {
-    Camera.y = -(canvas.height - mapPixelH) / 2;
+    targetY = -(canvas.height - mapPixelH) / 2;
   } else {
-    const targetY = state.player.pixelY + TILE_SIZE / 2 - canvas.height / 2;
-    Camera.y = Math.max(0, Math.min(targetY, mapPixelH - canvas.height));
+    const raw = state.player.pixelY + TILE_SIZE / 2 - canvas.height / 2;
+    targetY = Math.max(0, Math.min(raw, mapPixelH - canvas.height));
   }
+
+  if (!cameraInitialized) {
+    cameraTrueX = targetX;
+    cameraTrueY = targetY;
+    cameraInitialized = true;
+  } else {
+    // Eases toward the clamped target instead of snapping to it every
+    // frame, so panning (and especially the camera "catching up" after a
+    // dash) reads as a smooth follow rather than a rigid lock.
+    const t = Math.min(1, frameDt * CAMERA_LERP_SPEED);
+    cameraTrueX += (targetX - cameraTrueX) * t;
+    cameraTrueY += (targetY - cameraTrueY) * t;
+  }
+
+  const shake = getShakeOffset(state);
+  Camera.x = cameraTrueX + shake.x;
+  Camera.y = cameraTrueY + shake.y;
 }
 
 Input.init();
 
 let lastTime = performance.now();
+let frameDt = 1 / 60; // last raw (pre-hitstop) frame delta, in seconds - camera lerp reads this
 
 function loop(now) {
-  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  let dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+  frameDt = dt;
+
+  // A landed hit briefly slows gameplay to a near-freeze (not the render or
+  // input loop, just the dt gameplay code advances by) for a bit of impact
+  // weight - see triggerHitStop.
+  if (now < state.hitStopUntil) dt *= HITSTOP_DT_SCALE;
 
   update(dt);
   render();
 
   Input.endFrame();
   requestAnimationFrame(loop);
+}
+
+function triggerHitStop(state, ms) {
+  state.hitStopUntil = Math.max(state.hitStopUntil, performance.now() + ms);
+}
+
+// Camera-jitter "juice" for a landed hit - takes the stronger of an
+// overlapping trigger rather than letting a weak one cut a strong one short.
+function triggerShake(state, durationMs, magnitude) {
+  const now = performance.now();
+  if (now >= state.shakeUntil || magnitude >= state.shakeMag) {
+    state.shakeMag = magnitude;
+    state.shakeDurationMs = durationMs;
+    state.shakeStartedAt = now;
+    state.shakeUntil = now + durationMs;
+  }
+}
+
+function getShakeOffset(state) {
+  const now = performance.now();
+  if (now >= state.shakeUntil) return { x: 0, y: 0 };
+  const t = 1 - (now - state.shakeStartedAt) / state.shakeDurationMs; // 1 -> 0
+  const mag = state.shakeMag * Math.max(0, t);
+  return { x: (Math.random() * 2 - 1) * mag, y: (Math.random() * 2 - 1) * mag };
+}
+
+// ---------------------------------------------------------------------------
+// Particles: small physics-driven bursts for hit feedback, death, and
+// footstep dust. A flat list on state, integrated once a frame and drawn in
+// world space (see updateParticles / renderParticles).
+// ---------------------------------------------------------------------------
+
+function spawnHitParticles(state, x, y, color) {
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 90;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 2 + Math.random() * 2,
+      color,
+      life: 0,
+      maxLife: 0.22 + Math.random() * 0.14,
+      gravity: 260,
+    });
+  }
+}
+
+function spawnDeathParticles(state, x, y, color) {
+  for (let i = 0; i < 14; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 70 + Math.random() * 140;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      size: 2.5 + Math.random() * 3,
+      color,
+      life: 0,
+      maxLife: 0.35 + Math.random() * 0.25,
+      gravity: 320,
+    });
+  }
+}
+
+// Called from tryMovePlayer while the player is moving - throttled to a
+// puff every ~180ms rather than every frame, alternating slightly behind
+// the player's feet.
+function updateFootstepDust(state, player, dt) {
+  player.footstepAccumMs += dt * 1000;
+  if (player.footstepAccumMs < 180) return;
+  player.footstepAccumMs = 0;
+  const cx = player.pixelX + TILE_SIZE / 2, cy = player.pixelY + TILE_SIZE * 0.82;
+  state.particles.push({
+    x: cx + (Math.random() * 8 - 4),
+    y: cy,
+    vx: (Math.random() * 2 - 1) * 10,
+    vy: -6 - Math.random() * 5,
+    size: 3 + Math.random() * 2,
+    color: "rgba(210,200,170,0.4)",
+    life: 0,
+    maxLife: 0.35,
+    gravity: 30,
+  });
+}
+
+function updateParticles(state, dt) {
+  if (state.particles.length === 0) return;
+  state.particles = state.particles.filter((pt) => {
+    pt.life += dt;
+    if (pt.life >= pt.maxLife) return false;
+    pt.vy += (pt.gravity || 0) * dt;
+    pt.x += pt.vx * dt;
+    pt.y += pt.vy * dt;
+    pt.vx *= Math.max(0, 1 - dt * 4); // drag
+    return true;
+  });
+}
+
+// Called from within renderMap's translate(-Camera.x, -Camera.y) block, so
+// particle x/y are plain world-space coordinates like everything else there.
+function renderParticles(ctx, state) {
+  for (const pt of state.particles) {
+    const t = pt.life / pt.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - t);
+    ctx.fillStyle = pt.color;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, Math.max(0.5, pt.size * (1 - t * 0.5)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
 }
 
 function update(dt) {
@@ -445,6 +591,7 @@ function updateOverworld(dt) {
   updateMonsterCombat(state, dt);
   updatePoisoning(state);
   updateCorpseDespawn(state);
+  updateParticles(state, dt);
   if (state.mode === "GAMEOVER") return;
 
   if (Input.menuPressed()) {
@@ -622,6 +769,13 @@ function placePlayerAt(state, x, y, dir) {
   p.dir = dir;
   p.facingAngle = Math.atan2(dir8Vec(dir)[1], dir8Vec(dir)[0]);
   p.dash = null;
+  p.velX = 0;
+  p.velY = 0;
+  p.knockback = null;
+  // A hard teleport (door transition, respawn) can jump the player across
+  // the whole map - re-arm the "first frame" flag so updateCamera snaps
+  // straight to the new position instead of gliding there from the old one.
+  cameraInitialized = false;
 }
 
 // Toggles between the overworld and the player's home interior. Stepping
@@ -896,11 +1050,25 @@ function renderClassSelect() {
   ctx.textAlign = "left";
 }
 
+// A soft "torch-light" bubble follows the player through the dark instead
+// of a flat screen-wide tint - lit near them, easing out to full night
+// darkness toward the edges of the view, Core Keeper/Terraria-style.
 function renderNightOverlay(state) {
   if (state.location === "home") return; // the cabin is always lit indoors
   const darkness = 1 - getDaylightFactor(state.turnCount);
   if (darkness <= 0) return;
-  ctx.fillStyle = `rgba(6,10,30,${(darkness * 0.75).toFixed(3)})`;
+
+  const px = state.player.pixelX + TILE_SIZE / 2 - Camera.x;
+  const py = state.player.pixelY + TILE_SIZE / 2 - Camera.y;
+  const litRadius = TILE_SIZE * 3.2;
+  const fadeRadius = TILE_SIZE * 6.5;
+  const alpha = darkness * 0.82;
+
+  const grad = ctx.createRadialGradient(px, py, 0, px, py, fadeRadius);
+  grad.addColorStop(0, "rgba(6,10,30,0)");
+  grad.addColorStop(Math.min(0.95, litRadius / fadeRadius), `rgba(6,10,30,${(alpha * 0.15).toFixed(3)})`);
+  grad.addColorStop(1, `rgba(6,10,30,${alpha.toFixed(3)})`);
+  ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 

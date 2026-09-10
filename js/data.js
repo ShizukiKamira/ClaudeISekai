@@ -950,6 +950,27 @@ const PLAYER_RADIUS = TILE_SIZE * 0.32;
 const MONSTER_RADIUS = TILE_SIZE * 0.3;
 const COMBAT_CONTACT_GAP = 4; // extra px of buffer added to radius-sum contact checks
 
+// ---------------------------------------------------------------------------
+// Combat "juice": a landed hit briefly knocks its target back (wall-aware,
+// decaying), freezes gameplay for a couple frames for weight, and jolts the
+// camera - screenToTile/effect helpers live in player.js and main.js.
+// ---------------------------------------------------------------------------
+
+const KNOCKBACK_DURATION_MS = 200;
+const KNOCKBACK_FORCE_MONSTER = 260; // px/s initial push, decaying to 0
+const KNOCKBACK_FORCE_RABBIT = 220;
+const KNOCKBACK_FORCE_PLAYER = 180;
+const HITSTOP_MS_HIT = 45; // landing a normal hit
+const HITSTOP_MS_KILL = 90; // a kill blow - a little more weight
+const SHAKE_MS_HIT = 120;
+const SHAKE_MAG_HIT = 2.5; // px
+const SHAKE_MS_KILL = 220;
+const SHAKE_MAG_KILL = 5;
+const SHAKE_MS_PLAYER_HIT = 160;
+const SHAKE_MAG_PLAYER_HIT = 4;
+const HITSTOP_DT_SCALE = 0.08; // gameplay dt is multiplied by this during hit-stop - a near-freeze, not a hard stop
+const CAMERA_LERP_SPEED = 10; // higher = camera catches up to the player faster
+
 // Melee/ranged attacks aim along a continuous angle (toward the mouse)
 // instead of snapping to 4 cardinal directions, so swings/fireballs can fire
 // diagonally. MELEE_HALF_ANGLE spans the same 120-degree cone the old 3-tile

@@ -524,6 +524,8 @@ function renderMap(ctx, state) {
     drawFireball(ctx, proj);
   }
 
+  renderParticles(ctx, state);
+
   if (state.fishing.active && state.fishing.phase !== "minigame") {
     drawFishingLine(ctx, state);
   }

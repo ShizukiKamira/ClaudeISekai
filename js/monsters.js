@@ -104,6 +104,11 @@ function chebyshevDist(ax, ay, bx, by) {
 // stopping just outside melee contact range rather than stacking on top of
 // the player. Not alert: spots the player by vision radius, or wanders.
 function stepMonsterMovement(state, monster, dt) {
+  if (updateKnockback(state, monster, dt, MONSTER_RADIUS)) {
+    monster.moving = true;
+    updateDerivedTile(monster);
+    return;
+  }
   const p = state.player;
   if (monster.alert) {
     const targetX = p.pixelX + TILE_SIZE / 2, targetY = p.pixelY + TILE_SIZE / 2;

@@ -49,6 +49,10 @@ function createPlayer() {
     dashCharges: DASH_MAX_CHARGES,
     dashChargeRegenAt: 0,
     dash: null, // { active, fromX, fromY, toX, toY, startedAt } while a dash is animating
+    velX: 0, // current eased velocity (px/s) - ramps toward the input-driven target instead of snapping
+    velY: 0,
+    knockback: null, // { dx, dy, force, startedAt } while reeling from a hit
+    footstepAccumMs: 0,
     slowCooldownUntil: 0,
     statPoints: 0, // unspent points from leveling, spent on the Profile tab
     allocStr: 0, // Strength - flat bonus ATK
@@ -251,6 +255,42 @@ function moveWithCollision(state, entity, vx, vy, dt, radius) {
   return moved;
 }
 
+// A brief, decaying push away from an attacker - shared by the player
+// (hit by a monster) and monsters/rabbits (hit by the player), applied
+// through the same wall-respecting moveWithCollision normal movement uses,
+// so a knocked-back entity slides to a stop against obstacles instead of
+// clipping through them.
+function applyKnockback(entity, fromX, fromY, force) {
+  const cx = entity.pixelX + TILE_SIZE / 2, cy = entity.pixelY + TILE_SIZE / 2;
+  let dx = cx - fromX, dy = cy - fromY;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) {
+    dx = 1;
+    dy = 0;
+  } else {
+    dx /= d;
+    dy /= d;
+  }
+  entity.knockback = { dx, dy, force, startedAt: performance.now() };
+}
+
+// Advances an entity's active knockback, if any, and returns whether it's
+// still in effect - callers skip their own movement/AI for the frame when
+// it is, so knockback always reads as a clean stagger rather than fighting
+// against chase AI or held input.
+function updateKnockback(state, entity, dt, radius) {
+  const kb = entity.knockback;
+  if (!kb) return false;
+  const elapsed = performance.now() - kb.startedAt;
+  if (elapsed >= KNOCKBACK_DURATION_MS) {
+    entity.knockback = null;
+    return false;
+  }
+  const t = 1 - elapsed / KNOCKBACK_DURATION_MS; // 1 -> 0, linear falloff
+  moveWithCollision(state, entity, kb.dx * kb.force * t, kb.dy * kb.force * t, dt, radius);
+  return true;
+}
+
 // A monster hit by the Slow spell moves at SLOW_SPEED_MULT of its normal
 // speed until slowedUntil passes - checked here instead of baked into
 // entity.moveSpeed directly so the debuff can wear off on its own.
@@ -313,6 +353,10 @@ function updateDerivedTile(entity) {
 // same pacing holds under continuous movement.
 // ---------------------------------------------------------------------------
 
+const MOVE_ACCEL_TAU = 0.09; // seconds to ramp up to full speed once a direction is held
+const MOVE_DECEL_TAU = 0.12; // seconds to coast to a stop once input releases
+const MOVE_STOP_EPS = 3; // px/s - below this (with no input), velocity snaps to exactly 0
+
 function tryMovePlayer(state, dt) {
   const player = state.player;
   if (player.dash) {
@@ -321,18 +365,40 @@ function tryMovePlayer(state, dt) {
     return;
   }
 
-  const move = Input.moveVector();
-  if (!move) {
-    player.moving = false;
+  if (updateKnockback(state, player, dt, PLAYER_RADIUS)) {
+    player.moving = true;
+    updateDerivedTile(player);
     return;
   }
-  const angle = Math.atan2(move.y, move.x);
-  player.facingAngle = angle;
-  player.dir = angleToDir8(angle);
 
+  const move = Input.moveVector();
   const speed = effectivePlayerSpeed(player);
-  player.moving = moveWithCollision(state, player, move.x * speed, move.y * speed, dt, PLAYER_RADIUS);
+  const targetVX = move ? move.x * speed : 0;
+  const targetVY = move ? move.y * speed : 0;
+
+  // Ease the actual velocity toward the input-driven target instead of
+  // snapping to it instantly - a touch of accel/decel momentum reads as far
+  // less twitchy without feeling sluggish or unresponsive.
+  const tau = move ? MOVE_ACCEL_TAU : MOVE_DECEL_TAU;
+  const rate = Math.min(1, dt / tau);
+  player.velX += (targetVX - player.velX) * rate;
+  player.velY += (targetVY - player.velY) * rate;
+  if (!move && Math.hypot(player.velX, player.velY) < MOVE_STOP_EPS) {
+    player.velX = 0;
+    player.velY = 0;
+  }
+
+  if (move) {
+    const angle = Math.atan2(move.y, move.x);
+    player.facingAngle = angle;
+    player.dir = angleToDir8(angle);
+  }
+
+  moveWithCollision(state, player, player.velX, player.velY, dt, PLAYER_RADIUS);
+  player.moving = Math.hypot(player.velX, player.velY) > MOVE_STOP_EPS;
   updateDerivedTile(player);
+
+  if (player.moving) updateFootstepDust(state, player, dt);
 }
 
 // Fires once every TICK_INTERVAL_MS of real elapsed time, regardless of
@@ -510,7 +576,6 @@ function tryStartDash(state) {
 
   const endpoint = computeDashEndpoint(state, p, dirVec, DASH_DISTANCE);
   p.dash = { fromX: p.pixelX, fromY: p.pixelY, toX: endpoint.x, toY: endpoint.y, startedAt: now };
-  resetOutOfCombat(state);
 }
 
 function updateDash(state, dt) {

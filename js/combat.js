@@ -132,7 +132,6 @@ function tryPlayerAttack(state) {
   p.meleeAnimKind = weaponKind === "staff" ? "staff" : weaponKind ? "blade" : "fists";
   p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
   p.lastAttackAt = now;
-  resetOutOfCombat(state);
 
   // Resolve the swing against monsters' current positions - the cone check
   // uses each monster's live pixel center, so free-roaming movement can't
@@ -213,7 +212,6 @@ function castHotbarSkill(state, slotIndex) {
     p.lastCastAt = now;
     p.mp -= FIREBALL_MP_COST;
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
-    resetOutOfCombat(state);
     spawnFireball(state, p);
   } else if (skillId === "slow") {
     if (now < p.slowCooldownUntil) {
@@ -232,7 +230,6 @@ function castHotbarSkill(state, slotIndex) {
     p.mp -= SLOW_MP_COST;
     p.attackCooldownUntil = now + ATTACK_COOLDOWN_MS;
     p.slowCooldownUntil = now + SLOW_COOLDOWN_MS;
-    resetOutOfCombat(state);
     spawnSlowBolt(state, p);
   }
 }
@@ -296,6 +293,7 @@ function updateProjectiles(state, dt) {
 // Halves the hit monster's move speed for SLOW_DURATION_MS - re-applying
 // while already slowed just refreshes the duration rather than stacking.
 function applySlow(state, monster) {
+  resetOutOfCombat(state);
   monster.slowedUntil = performance.now() + SLOW_DURATION_MS;
   monster.floatText = { text: "Slowed!", until: performance.now() + 700 };
   logEvent(state, `Slowed ${monster.enemy.name}.`, "damage");
@@ -360,6 +358,10 @@ function resolveMonsterAttack(state, monster) {
   state.worldFlashMessage = `${msg} -${dmg} HP`;
   state.worldFlashUntil = performance.now() + 1000;
   logEvent(state, state.worldFlashMessage, "damage");
+  const mcx = monster.pixelX + TILE_SIZE / 2, mcy = monster.pixelY + TILE_SIZE / 2;
+  applyKnockback(p, mcx, mcy, KNOCKBACK_FORCE_PLAYER);
+  spawnHitParticles(state, p.pixelX + TILE_SIZE / 2, p.pixelY + TILE_SIZE / 2, "#e84f4f");
+  triggerShake(state, SHAKE_MS_PLAYER_HIT, SHAKE_MAG_PLAYER_HIT);
   if (p.hp <= 0) {
     state.mode = "GAMEOVER";
   }
@@ -372,6 +374,11 @@ function damageMonster(state, monster, dmg) {
   monster.hitFlashUntil = performance.now() + 150;
   monster.floatText = { text: `-${dmg}`, until: performance.now() + 700 };
   logEvent(state, `Hit ${monster.enemy.name} for ${dmg} damage.`, "damage");
+  const p = state.player;
+  applyKnockback(monster, p.pixelX + TILE_SIZE / 2, p.pixelY + TILE_SIZE / 2, KNOCKBACK_FORCE_MONSTER);
+  spawnHitParticles(state, monster.pixelX + TILE_SIZE / 2, monster.pixelY + TILE_SIZE / 2, monster.enemy.color);
+  triggerHitStop(state, HITSTOP_MS_HIT);
+  triggerShake(state, SHAKE_MS_HIT, SHAKE_MAG_HIT);
   // Getting hit (a fireball landing from range, say) wakes the monster up
   // even if it hadn't spotted the player yet - it comes to fight back.
   if (!monster.alert) {
@@ -417,6 +424,9 @@ function defeatMonster(state, monster) {
   const levelMsgs = grantExp(state, enemy.exp);
   state.player.gold += enemy.gold;
   state.monsters = state.monsters.filter((m) => m !== monster);
+  spawnDeathParticles(state, monster.pixelX + TILE_SIZE / 2, monster.pixelY + TILE_SIZE / 2, enemy.color);
+  triggerHitStop(state, HITSTOP_MS_KILL);
+  triggerShake(state, SHAKE_MS_KILL, SHAKE_MAG_KILL);
 
   let msg = `Defeated ${enemy.name}! +${enemy.exp} EXP, +${enemy.gold} gold.`;
   const drops = [];

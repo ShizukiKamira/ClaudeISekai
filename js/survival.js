@@ -155,6 +155,11 @@ function tryRabbitSpawn(state) {
 // the only ways to end up with meat are a loaded trap or catching up to
 // land a direct hit.
 function stepRabbitMovement(state, animal, dt) {
+  if (updateKnockback(state, animal, dt, MONSTER_RADIUS * 0.8)) {
+    animal.moving = true;
+    updateDerivedTile(animal);
+    return;
+  }
   const p = state.player;
   const dist = chebyshevDist(animal.tileX, animal.tileY, p.tileX, p.tileY);
   if (dist <= RABBIT_NOTICE_RADIUS) {
@@ -179,6 +184,11 @@ function damageAnimal(state, animal, dmg) {
   animal.currentHp = Math.max(0, (animal.currentHp ?? RABBIT_MAX_HP) - dmg);
   animal.hitFlashUntil = performance.now() + 150;
   animal.floatText = { text: `-${dmg}`, until: performance.now() + 700 };
+  const p = state.player;
+  applyKnockback(animal, p.pixelX + TILE_SIZE / 2, p.pixelY + TILE_SIZE / 2, KNOCKBACK_FORCE_RABBIT);
+  spawnHitParticles(state, animal.pixelX + TILE_SIZE / 2, animal.pixelY + TILE_SIZE / 2, "#c9a878");
+  triggerHitStop(state, HITSTOP_MS_HIT);
+  triggerShake(state, SHAKE_MS_HIT, SHAKE_MAG_HIT);
   if (animal.currentHp <= 0) {
     killRabbit(state, animal);
   }
